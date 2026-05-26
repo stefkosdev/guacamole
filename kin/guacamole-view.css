@@ -1,0 +1,24 @@
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; min-height: 100%; background: transparent; }
+#host { flex: 1; min-height: 0; padding: 8px; box-sizing: border-box; }
+
+.btn-sm {
+    font-size: 12px;
+    padding: 2px 8px;
+    border: 1px solid #888;
+    border-radius: 3px;
+    background: #f5f5f5;
+    cursor: pointer;
+}
+.btn-sm:hover { background: #e0e0e0; }
+.btn-remove { border-color: #c44; color: #c44; }
+.btn-remove:hover { background: #fdd; }
+
+[kin-theme="kin-dark"] .btn-sm {
+    background: #333;
+    border-color: #666;
+    color: #ddd;
+}
+[kin-theme="kin-dark"] .btn-sm:hover { background: #444; }
+[kin-theme="kin-dark"] .btn-remove { border-color: #f66; color: #f66; }
+[kin-theme="kin-dark"] .btn-remove:hover { background: #422; }

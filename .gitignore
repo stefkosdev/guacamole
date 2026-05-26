@@ -1,0 +1,13 @@
+install.ini
+obj/
+tmp/
+config/
+build/
+dist/
+*.o
+*.zip
+services/guacamole.service/guacamole.service
+libraries
+dependencies/guacamole-server-source
+dependencies/guacamole-server-install
+

@@ -1,0 +1,9 @@
+{
+  "id": "kin_guacamole_admin",
+  "category": "Administration",
+  "displayName": "Guacamole",
+  "version": "1",
+  "entry": "main.js",
+  "published": true,
+  "adminOnly": true
+}

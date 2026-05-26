@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "root": {
+    "type": "Application",
+    "scale": 1,
+    "children": [
+      {
+        "type": "Column",
+        "id": "root-col",
+        "gap": "6px",
+        "children": [
+          {
+            "type": "Tabs",
+            "id": "main-tabs",
+            "tabs": [
+              {
+                "id": "tab-connections",
+                "label": "Connections",
+                "active": true,
+                "panel": {
+                  "type": "Column",
+                  "gap": "8px",
+                  "children": [
+                    {
+                      "type": "Frame",
+                      "title": "Remote desktop connections",
+                      "children": [
+                        {
+                          "type": "ListTable",
+                          "id": "conn-table",
+                          "headers": "Name|Protocol|Host|Port|Username|Status|Actions",
+                          "max-height": "40vh"
+                        },
+                        {
+                          "type": "Row",
+                          "id": "conn-toolbar",
+                          "gap": "8px",
+                          "wrap": true,
+                          "children": [
+                            { "type": "Button", "id": "btn-add", "label": "Add connection" },
+                            { "type": "Button", "id": "btn-reload", "label": "Reload" }
+                          ]
+                        },
+                        { "type": "Text", "id": "conn-status", "text": "" }
+                      ]
+                    },
+                    {
+                      "type": "Frame",
+                      "id": "edit-frame",
+                      "title": "Add connection",
+                      "hidden": true,
+                      "children": [
+                        {
+                          "type": "Column",
+                          "gap": "8px",
+                          "children": [
+                            {
+                              "type": "Row",
+                              "gap": "8px",
+                              "wrap": true,
+                              "children": [
+                                {
+                                  "type": "Column",
+                                  "gap": "6px",
+                                  "flex": 1,
+                                  "children": [
+                                    { "type": "Input", "id": "edit-name", "placeholder": "Connection name *", "aria-label": "Name" },
+                                    { "type": "Select", "id": "edit-protocol", "options": "vnc|rdp|ssh|telnet|kubernetes", "value": "rdp", "aria-label": "Protocol" },
+                                    { "type": "Input", "id": "edit-hostname", "placeholder": "Hostname or IP *", "aria-label": "Hostname" },
+                                    { "type": "Input", "id": "edit-port", "placeholder": "Port (default per protocol)", "aria-label": "Port" },
+                                    { "type": "Input", "id": "edit-username", "placeholder": "Username", "aria-label": "Username" }
+                                  ]
+                                },
+                                {
+                                  "type": "Column",
+                                  "gap": "6px",
+                                  "flex": 1,
+                                  "children": [
+                                    { "type": "Input", "id": "edit-password", "placeholder": "Password", "aria-label": "Password", "type": "password" },
+                                    { "type": "Input", "id": "edit-domain", "placeholder": "Domain (RDP)", "aria-label": "Domain" },
+                                    { "type": "Select", "id": "edit-security", "options": "any|nla|tls|rdp", "value": "any", "aria-label": "RDP security" },
+                                    { "type": "Select", "id": "edit-color-depth", "options": "8|16|24|32", "value": "32", "aria-label": "Color depth" },
+                                    {
+                                      "type": "Row",
+                                      "gap": "8px",
+                                      "wrap": true,
+                                      "children": [
+                                        { "type": "Input", "id": "edit-width", "placeholder": "Width", "value": "1024", "aria-label": "Width", "style": "width:80px" },
+                                        { "type": "Text", "text": "x" },
+                                        { "type": "Input", "id": "edit-height", "placeholder": "Height", "value": "768", "aria-label": "Height", "style": "width:80px" },
+                                        { "type": "Text", "text": "@" },
+                                        { "type": "Input", "id": "edit-dpi", "placeholder": "DPI", "value": "96", "aria-label": "DPI", "style": "width:60px" }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Frame",
+                              "title": "Features",
+                              "children": [
+                                {
+                                  "type": "Row",
+                                  "gap": "12px",
+                                  "wrap": true,
+                                  "children": [
+                                    { "type": "Switch", "id": "edit-enable-audio", "label": "Audio" },
+                                    { "type": "Switch", "id": "edit-enable-video", "label": "Video" },
+                                    { "type": "Switch", "id": "edit-enable-printing", "label": "Printing" },
+                                    { "type": "Switch", "id": "edit-enable-file-transfer", "label": "File transfer" },
+                                    { "type": "Switch", "id": "edit-enable-wallpaper", "label": "Wallpaper" },
+                                    { "type": "Switch", "id": "edit-enable-theming", "label": "Theming" },
+                                    { "type": "Switch", "id": "edit-disable-copy", "label": "Disable copy" },
+                                    { "type": "Switch", "id": "edit-disable-paste", "label": "Disable paste" }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Row",
+                              "gap": "8px",
+                              "wrap": true,
+                              "children": [
+                                { "type": "Button", "id": "btn-edit-save", "label": "Save" },
+                                { "type": "Button", "id": "btn-edit-cancel", "label": "Cancel" }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "tab-sessions",
+                "label": "Sessions",
+                "panel": {
+                  "type": "Column",
+                  "gap": "8px",
+                  "children": [
+                    {
+                      "type": "Frame",
+                      "title": "Active sessions",
+                      "children": [
+                        {
+                          "type": "ListTable",
+                          "id": "sessions-table",
+                          "headers": "Session ID|User|Connection|Protocol|Host|Port|Started|Actions",
+                          "max-height": "55vh"
+                        },
+                        {
+                          "type": "Row",
+                          "gap": "8px",
+                          "wrap": true,
+                          "children": [
+                            { "type": "Button", "id": "btn-refresh-sessions", "label": "Refresh" }
+                          ]
+                        },
+                        { "type": "Text", "id": "sessions-status", "text": "" }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "tab-protocols",
+                "label": "Protocols",
+                "panel": {
+                  "type": "Column",
+                  "gap": "8px",
+                  "children": [
+                    {
+                      "type": "Frame",
+                      "title": "Supported protocols",
+                      "children": [
+                        {
+                          "type": "Text",
+                          "id": "protocols-text",
+                          "text": "Loading..."
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "tab-settings",
+                "label": "Settings",
+                "panel": {
+                  "type": "Column",
+                  "gap": "8px",
+                  "children": [
+                    {
+                      "type": "Frame",
+                      "title": "Service configuration",
+                      "children": [
+                        {
+                          "type": "Column",
+                          "gap": "6px",
+                          "children": [
+                            {
+                              "type": "Row",
+                              "gap": "12px",
+                              "wrap": true,
+                              "children": [
+                                { "type": "Text", "id": "settings-connections", "text": "Connections: -" },
+                                { "type": "Text", "id": "settings-sessions", "text": "Sessions: -" },
+                                { "type": "Text", "id": "settings-max-connections", "text": "Max connections: -" }
+                              ]
+                            }
+                          ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
