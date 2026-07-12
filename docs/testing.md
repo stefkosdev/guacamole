@@ -56,11 +56,38 @@ is absent, so `make test` stays green when the service is not running.
 
 ## Layer 3 — End-to-end against a real VNC server
 
-`scripts/setup-vnc-test-env.sh` stands up a real VNC target so a stored
-connection can be exercised for real. It prefers **Docker** (nothing is
-installed on the host): it builds `tests/vnc/` (Alpine + Xvfb + x11vnc +
-fluxbox) and runs it, then verifies the RFB banner with
-`scripts/vnc-rfb-probe.py`.
+### Automated (`make e2e`)
+
+`scripts/e2e-vnc.sh` runs the whole path automatically and asserts on the
+result:
+
+```bash
+make e2e            # or: scripts/e2e-vnc.sh [--port 5905] [--keep]
+```
+
+It brings up the VNC target (Docker), starts `guacamole.service` under a
+**minimal Kin manager stub** (`tests/e2e/fake_manager.c` — no full Kin, no
+nginx, no DB), seeds a stored VNC connection in a temporary `.info` store, then:
+
+1. runs the socket smoke test (`select` a bogus protocol → expect `error`);
+2. runs the stored-connection probe (`tests/e2e/guac_client_probe.py`) which
+   does `select $<id>` with **empty client argv** and expects `ready`;
+3. asserts the VNC target logged an **authenticated** client.
+
+Step 3 is the strong assertion: with empty client argv, the host / port /
+password can only have come from the stored connection, so an authenticated
+VNC session proves the persisted connection reached the backend plugin. It all
+tears down on exit (add `--keep` to leave the target up).
+
+> How the stub works: `kin_init(NULL, key)` runs the Kin library in server mode
+> and creates the `/kin_shm_<key>` IPC segment; the service, launched with the
+> stub's PID as its manager key, attaches as a client. The Guacamole
+> Unix-socket path is independent of Kin IPC, so this is enough to exercise the
+> full connection flow without the rest of Kin.
+
+### Manual target only
+
+To stand up just the VNC target and click **Connect** in the admin app:
 
 ```bash
 make vnc-up                    # or: scripts/setup-vnc-test-env.sh --port 5900
@@ -68,8 +95,8 @@ make vnc-up                    # or: scripts/setup-vnc-test-env.sh --port 5900
 make vnc-down                  # tear down
 ```
 
-Then, in the Guacamole admin app (or via the API), add a VNC connection with
-those values and click **Connect**. When Docker is unavailable the setup script
+Docker is preferred (nothing is installed on the host): it builds `tests/vnc/`
+(Alpine + Xvfb + x11vnc + fluxbox). When Docker is unavailable the setup script
 prints `apt` instructions for `tigervnc` / `x11vnc` instead.
 
 > The `vnc-rfb-probe.py` helper (`scripts/vnc-rfb-probe.py <host> <port>`) can be

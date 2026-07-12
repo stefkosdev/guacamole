@@ -95,12 +95,16 @@ make                         # Build guacamole.service (auto-fetches libguac)
 ```bash
 make test                    # management/persistence tests + optional socket smoke test
 make test-unit               # dependency-free management/persistence tests only
-make vnc-up / make vnc-down  # real VNC target via Docker for end-to-end testing
+make e2e                     # full e2e: a persisted connection drives a real VNC session
+make vnc-up / make vnc-down  # real VNC target via Docker for manual testing
 ```
 
 See `docs/testing.md` for the layered strategy. Layer 1 (management/persistence)
 compiles directly against `management.c` — no libguac or kin.library needed — and
-is the pre-commit gate.
+is the pre-commit gate. `make e2e` runs `guacamole.service` under a minimal Kin
+manager stub (`tests/e2e/fake_manager.c`) against a Docker VNC target and asserts
+the stored connection reaches the backend (verified: an authenticated VNC session
+comes up with credentials sourced only from the `.info` store).
 
 ## Dependencies
 

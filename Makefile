@@ -22,6 +22,11 @@ test:
 test-unit:
 	$(MAKE) -C $(SERVICE_DIR)/tests run
 
+# Full end-to-end test: a persisted connection drives a real VNC session
+# (service under a minimal Kin manager stub; needs Docker + a built service).
+e2e:
+	./scripts/e2e-vnc.sh
+
 # Bring a real VNC target up / down for end-to-end testing (needs Docker).
 vnc-up:
 	./scripts/setup-vnc-test-env.sh
@@ -33,4 +38,4 @@ clean:
 	$(MAKE) -C $(SERVICE_DIR) clean
 	$(MAKE) -C $(SERVICE_DIR)/tests clean
 
-.PHONY: all service build-apps deb test test-unit vnc-up vnc-down clean
+.PHONY: all service build-apps deb test test-unit e2e vnc-up vnc-down clean
