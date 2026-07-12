@@ -132,9 +132,26 @@ The Kin HTTP service routes these to `guacamole.service` via IPC events.
 2. Web app calls `POST /api/guacamole/connections` with connection details
 3. Connection stored in-memory in `guacamole.service` and persisted to `Guacamole.info`
 4. Remote desktop app connects via Unix socket with `select $<connection_id>`
-5. Service looks up connection, loads protocol plugin, sets env vars
+5. Service looks up connection, loads protocol plugin, and injects the stored
+   parameters into the plugin's argv per-connection (see below)
 6. Service creates `guac_user` and calls `guac_user_handle_connection()`
 7. Blocks until disconnect, then cleans up
+
+### Parameter injection
+
+A libguac protocol plugin reads its parameters from the argv of the client's
+`connect` instruction (`guac_<proto>_parse_args` reads argv — it does **not**
+read the environment). For a stored connection the parameters must come from
+the server, not from whatever the remote client sends, so the service overrides
+the plugin's `join_handler` **for that connection only** and rebuilds argv from
+the stored connection before the plugin parses it.
+
+This is done with thread-local state: each connection runs on its own thread,
+the join handler runs synchronously on that thread, and `guac_client` is
+per-connection — so there are no process-global mutations and concurrent
+sessions cannot clobber each other's host/credentials. (An earlier
+implementation used `setenv()`, which the plugin ignored and which was unsafe
+for concurrent users.)
 
 ## Persistence (Kin `.info` store)
 

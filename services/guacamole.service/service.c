@@ -119,8 +119,87 @@ typedef struct {
     char peer_str[64];
 } GuacClientThreadParams;
 
+/*
+ * Per-connection injection of a stored connection's parameters.
+ *
+ * A libguac protocol plugin receives its parameters as the argv of the
+ * client's "connect" instruction (guac_*_parse_args reads argv, never the
+ * environment). For a stored connection (`select $<id>`) the parameters must
+ * come from the server, not from whatever the remote client sends. We do this
+ * by overriding the plugin's join_handler for THIS connection only and
+ * rebuilding argv from the stored connection before the plugin parses it.
+ *
+ * State is thread-local: each connection runs on its own thread, the join
+ * handler runs synchronously on that same thread inside
+ * guac_user_handle_connection(), and guac_client is per-connection. So there
+ * are no process-global mutations — concurrent sessions cannot clobber each
+ * other's host/credentials (the previous setenv() approach could, and was
+ * ignored by the plugin anyway).
+ */
+static __thread GuacConnection t_stored_conn;
+static __thread guac_user_join_handler* t_orig_join_handler;
+static __thread int t_use_stored_conn;
+
+static const char* guac_bool(int v) { return v ? "true" : "false"; }
+
+static int stored_conn_join_handler(guac_user* user, int argc, char** argv)
+{
+    guac_user_join_handler* orig = t_orig_join_handler;
+    if (!t_use_stored_conn || !orig)
+        return orig ? orig(user, argc, argv) : 1;
+
+    const GuacConnection* c = &t_stored_conn;
+    const char** names = user->client->args;
+
+    char** ov = malloc((size_t)argc * sizeof(char*));
+    if (!ov)
+        return orig(user, argc, argv);   /* fall back rather than fail */
+
+    char portb[16], wb[16], hb[16], db[16];
+    snprintf(portb, sizeof(portb), "%d", c->port);
+    snprintf(wb, sizeof(wb), "%d", c->width);
+    snprintf(hb, sizeof(hb), "%d", c->height);
+    snprintf(db, sizeof(db), "%d", c->dpi);
+
+    for (int i = 0; i < argc; i++)
+    {
+        const char* n = names[i] ? names[i] : "";
+        const char* v = argv[i];          /* default: keep client-sent value */
+
+        if      (!strcmp(n, "hostname"))                v = c->hostname;
+        else if (!strcmp(n, "port"))                    v = c->port > 0 ? portb : argv[i];
+        else if (!strcmp(n, "username"))                v = c->username;
+        else if (!strcmp(n, "password"))                v = c->password;
+        else if (!strcmp(n, "domain"))                  v = c->domain;
+        else if (!strcmp(n, "private-key"))             v = c->private_key;
+        else if (!strcmp(n, "security"))                v = c->security;
+        else if (!strcmp(n, "color-depth"))             v = c->color_depth[0] ? c->color_depth : argv[i];
+        else if (!strcmp(n, "width"))                   v = c->width > 0 ? wb : argv[i];
+        else if (!strcmp(n, "height"))                  v = c->height > 0 ? hb : argv[i];
+        else if (!strcmp(n, "dpi"))                     v = c->dpi > 0 ? db : argv[i];
+        else if (!strcmp(n, "enable-audio"))            v = guac_bool(c->enable_audio);
+        else if (!strcmp(n, "enable-printing"))         v = guac_bool(c->enable_printing);
+        else if (!strcmp(n, "enable-drive"))            v = guac_bool(c->enable_file_transfer);
+        else if (!strcmp(n, "enable-wallpaper"))        v = guac_bool(c->enable_wallpaper);
+        else if (!strcmp(n, "enable-theming"))          v = guac_bool(c->enable_theming);
+        else if (!strcmp(n, "enable-font-smoothing"))   v = guac_bool(c->enable_font_smoothing);
+        else if (!strcmp(n, "enable-full-window-drag")) v = guac_bool(c->enable_full_window_drag);
+        else if (!strcmp(n, "enable-menu-animations"))  v = guac_bool(c->enable_menu_animation);
+        else if (!strcmp(n, "disable-copy"))            v = guac_bool(c->disable_copy);
+        else if (!strcmp(n, "disable-paste"))           v = guac_bool(c->disable_paste);
+
+        ov[i] = (char*)(v ? v : "");
+    }
+
+    int rc = orig(user, argc, ov);
+    free(ov);
+    return rc;
+}
+
 static void* connection_thread(void* arg)
 {
+    t_use_stored_conn = 0;
+
     GuacClientThreadParams* params = (GuacClientThreadParams*)arg;
     int client_fd = params->client_fd;
     char peer_str[64];
@@ -226,45 +305,15 @@ static void* connection_thread(void* arg)
             return NULL;
         }
 
-        /* Set connection args from stored connection */
-        /* The plugin's guac_client_init will parse these from the environment */
-        setenv("GUAC_HOSTNAME", conn->hostname, 1);
-        setenv("GUAC_PORT", "", 1);
-        {
-            char port_str[16];
-            snprintf(port_str, sizeof(port_str), "%d", conn->port);
-            setenv("GUAC_PORT", port_str, 1);
-        }
-        if (conn->username[0])
-            setenv("GUAC_USERNAME", conn->username, 1);
-        if (conn->password[0])
-            setenv("GUAC_PASSWORD", conn->password, 1);
-        if (conn->private_key[0])
-            setenv("GUAC_PRIVATE_KEY", conn->private_key, 1);
-        if (conn->domain[0])
-            setenv("GUAC_DOMAIN", conn->domain, 1);
-        if (conn->security[0])
-            setenv("GUAC_SECURITY", conn->security, 1);
-        if (conn->color_depth[0])
-            setenv("GUAC_COLOR_DEPTH", conn->color_depth, 1);
-        if (conn->width > 0)
-        {
-            char wstr[16];
-            snprintf(wstr, sizeof(wstr), "%d", conn->width);
-            setenv("GUAC_WIDTH", wstr, 1);
-        }
-        if (conn->height > 0)
-        {
-            char hstr[16];
-            snprintf(hstr, sizeof(hstr), "%d", conn->height);
-            setenv("GUAC_HEIGHT", hstr, 1);
-        }
-        if (conn->dpi > 0)
-        {
-            char dstr[16];
-            snprintf(dstr, sizeof(dstr), "%d", conn->dpi);
-            setenv("GUAC_DPI", dstr, 1);
-        }
+        /* Inject the stored connection's parameters into the plugin per this
+         * connection only (thread-local; no process-global state), so the
+         * plugin connects to the stored host with the stored credentials
+         * regardless of what the remote client supplies. See
+         * stored_conn_join_handler above. */
+        t_stored_conn = *conn;
+        t_orig_join_handler = client->join_handler;
+        t_use_stored_conn = 1;
+        client->join_handler = stored_conn_join_handler;
 
         /* Mark session active */
         guac_mgmt_mark_session_start(conn->id, "");

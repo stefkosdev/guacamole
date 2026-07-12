@@ -74,12 +74,14 @@ def main():
     s.sendall(enc("select", ident))
 
     argnames = None
+    version = "VERSION_1_1_0"
     for _ in range(10):
         instr = r.next_instr()
         if instr is None:
             break
         if instr[0] == "args":
-            argnames = instr[2:]  # [0]=args, [1]=protocol version
+            version = instr[1]     # protocol version, echoed back in `connect`
+            argnames = instr[2:]   # the parameter names
             break
         if instr[0] in ("error", "disconnect"):
             print(f"<- {instr[0]}: {instr[1:]}")
@@ -87,7 +89,7 @@ def main():
     if argnames is None:
         print("RESULT: FAIL — no `args` from server")
         return 1
-    print(f"<- args ({len(argnames)} params)")
+    print(f"<- args v={version} ({len(argnames)} params)")
 
     values = [REAL_VALUES.get(a, "") if mode == "real" else "" for a in argnames]
 
@@ -96,7 +98,9 @@ def main():
     s.sendall(enc("video"))
     s.sendall(enc("image"))
     print(f"-> connect ({mode} argv)")
-    s.sendall(enc("connect", *values))
+    # libguac requires connect to echo the protocol version first, then one
+    # value per arg name (argc must equal num_args + 1).
+    s.sendall(enc("connect", version, *values))
 
     opcodes, ready, deadline = [], False, time.time() + 6.0
     while time.time() < deadline:

@@ -66,7 +66,11 @@ The service registers event handlers for `"guacamole"` and `"api"` events on the
 2. Web app calls `POST /api/guacamole/connections` with connection details
 3. Connection stored in-memory in `guacamole.service` **and persisted to `Guacamole.info`**
 4. Remote desktop app connects via Unix socket with `select $<connection_id>`
-5. Service loads the appropriate protocol plugin and sets env vars from stored connection
+5. Service loads the appropriate protocol plugin and injects the stored
+   connection's parameters into the plugin's argv per-connection (by wrapping
+   the plugin's `join_handler` on a thread-local basis — NOT via env vars,
+   which the plugin does not read and which would be unsafe across concurrent
+   sessions)
 6. Service creates `guac_user` and calls `guac_user_handle_connection()` (blocks until disconnect)
 
 ### Persistence

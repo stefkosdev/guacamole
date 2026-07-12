@@ -12,3 +12,4 @@ libraries
 dependencies/guacamole-server-source
 dependencies/guacamole-server-install
 
+logs/
