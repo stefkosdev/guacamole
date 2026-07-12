@@ -1,4 +1,4 @@
-import { createApp } from '../kin_ui/kin-ui.js';
+import { createApp, registerKinUI } from '../kin_ui/kin-ui.js';
 
 let connections = [];
 let sessions = [];
@@ -387,6 +387,11 @@ async function loadSettings(ui) {
         ui.setAttrs('settings-connections', { text: 'Connections: ' + (s.connection_count || 0) });
         ui.setAttrs('settings-sessions', { text: 'Sessions: ' + (s.session_count || 0) });
         ui.setAttrs('settings-max-connections', { text: 'Max connections: ' + (s.max_connections || 256) });
+        ui.setAttrs('settings-storage', {
+            text: s.storage_path
+                ? 'Storage: ' + s.storage_path + (s.persistent ? ' (persistent)' : '')
+                : 'Storage: in-memory only'
+        });
     } else {
         setStatus(ui, 'conn-status', data.message || 'Failed to load settings.');
     }
@@ -400,21 +405,33 @@ async function main() {
         host.id = 'host';
         document.body.appendChild(host);
     }
+    await registerKinUI();
     const res = await fetch(new URL('./ui.json', import.meta.url), { cache: 'no-store' });
     const spec = await res.json();
     const ui = createApp({ root: host, spec });
+
+    ui.setAttrs('app-status', { text: 'Guacamole Remote Desktop Manager — UI loaded' });
 
     ui.getById('btn-add')?.addEventListener('kin-press', () => openAdd(ui));
     ui.getById('btn-reload')?.addEventListener('kin-press', () => loadConnections(ui));
     ui.getById('btn-edit-save')?.addEventListener('kin-press', () => saveConnection(ui));
     ui.getById('btn-edit-cancel')?.addEventListener('kin-press', () => closeEditor(ui));
     ui.getById('btn-refresh-sessions')?.addEventListener('kin-press', () => loadSessions(ui));
-    await Promise.all([
-        loadConnections(ui),
-        loadSessions(ui),
-        loadProtocols(ui),
-        loadSettings(ui)
-    ]);
+    try {
+        await Promise.all([
+            loadConnections(ui),
+            loadSessions(ui),
+            loadProtocols(ui),
+            loadSettings(ui)
+        ]);
+    } catch (e) {
+        console.error('Guacamole: API calls failed', e);
+        setStatus(ui, 'conn-status', 'API unavailable — ' + (e.message || e));
+    }
 }
 
-main();
+main().catch(e => {
+    console.error('Guacamole: main() failed', e);
+    const host = document.getElementById('host');
+    if (host) host.textContent = 'Error: ' + (e.message || e);
+});

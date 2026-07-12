@@ -33,7 +33,30 @@ Displays the list of supported protocols: VNC, RDP, SSH, Telnet, Kubernetes
 
 ### Settings Tab
 
-Shows service configuration: connection count, session count, and limits.
+Shows service configuration: connection count, session count, limits, and the
+path of the persistent connection store (`storage_path`).
+
+## Saving & Loading Connections
+
+Connections you create are saved automatically — there is no separate "Save"
+button. The service stores them in a JSON `.info` file, the same convention Kin
+apps use for their settings (e.g. `Wallpaper.info`). Your connections therefore
+survive a service restart or a reboot.
+
+- **Where**: `Guacamole.info`, under your Kin data directory
+  (`$XDG_DATA_HOME/kin/guacamole/` or `~/.local/share/kin/guacamole/`).
+  Set `KIN_GUACAMOLE_STATE` to override the full path.
+- **What is saved**: every connection and all of its parameters (including
+  stored credentials), plus its `created` / `last_used` timestamps.
+- **What is NOT saved**: active sessions. These are live and are cleared when
+  the service stops; on the next start every connection shows as `Idle`.
+- **When**: the store is rewritten on every add, edit, remove, and connect.
+- **Manual reload**: the connection list can be re-read from disk at any time
+  via `POST /api/guacamole/connections {"action":"reload"}` (or the app's
+  Reload button, which refreshes from the service).
+
+> Note: the file contains credentials in plain text. It is written with
+> owner-only permissions (`0600`) inside your user data directory.
 
 ## Connection Parameters
 

@@ -7,6 +7,7 @@ dist/
 *.o
 *.zip
 services/guacamole.service/guacamole.service
+services/guacamole.service/tests/test_management
 libraries
 dependencies/guacamole-server-source
 dependencies/guacamole-server-install

@@ -57,6 +57,7 @@ The Kin HTTP service routes these to `guacamole.service` via IPC events.
 | POST | `/api/guacamole/connections` | `action: update` — modify connection |
 | POST | `/api/guacamole/connections` | `action: delete` — remove connection |
 | POST | `/api/guacamole/connections` | `action: get` — get single connection |
+| POST | `/api/guacamole/connections` | `action: reload` — reload store from disk |
 
 ### Sessions
 
@@ -71,7 +72,7 @@ The Kin HTTP service routes these to `guacamole.service` via IPC events.
 | Method | Endpoint | Action |
 |--------|----------|--------|
 | GET | `/api/guacamole/protocols` | List supported protocols |
-| GET | `/api/guacamole/settings` | Service configuration |
+| GET | `/api/guacamole/settings` | Service configuration (incl. `persistent`, `storage_path`) |
 
 ## Connection Data Model
 
@@ -129,11 +130,54 @@ The Kin HTTP service routes these to `guacamole.service` via IPC events.
 
 1. Admin adds connection via `kin_guacamole_admin` web app
 2. Web app calls `POST /api/guacamole/connections` with connection details
-3. Connection stored in-memory in `guacamole.service`
+3. Connection stored in-memory in `guacamole.service` and persisted to `Guacamole.info`
 4. Remote desktop app connects via Unix socket with `select $<connection_id>`
 5. Service looks up connection, loads protocol plugin, sets env vars
 6. Service creates `guac_user` and calls `guac_user_handle_connection()`
 7. Blocks until disconnect, then cleans up
+
+## Persistence (Kin `.info` store)
+
+Connections are durable settings and are persisted to a JSON `.info` file,
+following the Kin convention used by apps such as `Wallpaper.info` and
+`Calendar.info`. Sessions are live runtime state and are **not** persisted.
+
+### Store location
+
+Resolved at service startup, first that applies:
+
+| Order | Source | Path |
+|-------|--------|------|
+| 1 | `$KIN_GUACAMOLE_STATE` | value used verbatim (full path override) |
+| 2 | `$XDG_DATA_HOME` | `$XDG_DATA_HOME/kin/guacamole/Guacamole.info` |
+| 3 | `$HOME` | `$HOME/.local/share/kin/guacamole/Guacamole.info` |
+| 4 | fallback | `/tmp/kin-guacamole-<uid>/Guacamole.info` |
+
+### File format
+
+```json
+{
+  "version": 1,
+  "connections": [
+    { "id": "…", "name": "…", "protocol": "rdp", "hostname": "…", "port": 3389,
+      "username": "…", "password": "…", "private_key": "…", "domain": "…",
+      "security": "…", "color_depth": "24", "enable_audio": true, "…": "…",
+      "width": 1920, "height": 1080, "dpi": 120,
+      "created": 1712345678, "last_used": 1712345678 }
+  ]
+}
+```
+
+### Behavior
+
+- **Load**: on `guac_mgmt_init()`. On load, `active` is forced to `false`
+  (no sessions are live after a restart).
+- **Save**: rewritten atomically (write to `Guacamole.info.tmp`, then `rename`)
+  after every `add`, `update`, `delete`, and on `connect` (to record `last_used`).
+- **Reload**: `POST /api/guacamole/connections {"action":"reload"}` discards the
+  in-memory table and reloads it from disk.
+- The parser tolerates a leading wrapper object and reads one connection per
+  top-level `{…}` inside the `connections` array (string/escape aware).
 
 ## Kin IPC Integration
 

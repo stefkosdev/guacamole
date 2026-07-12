@@ -131,6 +131,18 @@ static int json_field_bool(const char* json, const char* field)
     return (strncmp(p, "true", 4) == 0);
 }
 
+static long json_field_long(const char* json, const char* field)
+{
+    if (!json || !field) return 0;
+    char needle[128];
+    snprintf(needle, sizeof(needle), "\"%s\":", field);
+    const char* p = strstr(json, needle);
+    if (!p) return 0;
+    p += strlen(needle);
+    while (*p == ' ') p++;
+    return strtol(p, NULL, 10);
+}
+
 static char* json_error(const char* msg)
 {
     char buf[512];
@@ -138,6 +150,260 @@ static char* json_error(const char* msg)
     json_escape(msg ? msg : "Unknown error", esc, sizeof(esc));
     snprintf(buf, sizeof(buf), "{\"response\":\"fail\",\"message\":\"%s\"}", esc);
     return strdup(buf);
+}
+
+/* ------------------------------------------------------------------------ *
+ *  Persistent storage — Kin ".info" convention
+ *
+ *  Connections are the durable "settings" of the gateway: the service needs
+ *  them to route protocol clients, so they must survive restarts. Following
+ *  the Kin convention (e.g. Wallpaper.info, Calendar.info) they are stored as
+ *  a JSON document in a "*.info" file. Sessions are live runtime state and are
+ *  intentionally NOT persisted — they are meaningless once the service (and the
+ *  remote desktop connections it holds) is gone.
+ *
+ *  Store location, first that resolves:
+ *    $KIN_GUACAMOLE_STATE                              (explicit full path override)
+ *    $XDG_DATA_HOME/kin/guacamole/Guacamole.info
+ *    $HOME/.local/share/kin/guacamole/Guacamole.info
+ *    /tmp/kin-guacamole-<uid>/Guacamole.info           (last resort)
+ * ------------------------------------------------------------------------ */
+
+static char g_store_path[1024] = {0};
+
+static void resolve_store_path(void)
+{
+    const char* over = getenv("KIN_GUACAMOLE_STATE");
+    if (over && over[0])
+    {
+        snprintf(g_store_path, sizeof(g_store_path), "%s", over);
+        return;
+    }
+    const char* xdg = getenv("XDG_DATA_HOME");
+    if (xdg && xdg[0])
+    {
+        snprintf(g_store_path, sizeof(g_store_path), "%s/kin/guacamole/Guacamole.info", xdg);
+        return;
+    }
+    const char* home = getenv("HOME");
+    if (home && home[0])
+    {
+        snprintf(g_store_path, sizeof(g_store_path), "%s/.local/share/kin/guacamole/Guacamole.info", home);
+        return;
+    }
+    snprintf(g_store_path, sizeof(g_store_path), "/tmp/kin-guacamole-%d/Guacamole.info", (int)getuid());
+}
+
+/* Create every parent directory of `path` (the "mkdir -p" of its dirname). */
+static void mkdir_parents(const char* path)
+{
+    char tmp[1024];
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    char* last = strrchr(tmp, '/');
+    if (!last) return;
+    *last = '\0';                       /* drop the filename, keep the directory */
+    for (char* p = tmp + 1; *p; p++)
+    {
+        if (*p == '/')
+        {
+            *p = '\0';
+            (void)mkdir(tmp, 0700);
+            *p = '/';
+        }
+    }
+    (void)mkdir(tmp, 0700);
+}
+
+/* Serialize a single connection as a JSON object (no response wrapper). */
+static size_t serialize_connection(const GuacConnection* c, char* buf, size_t cap)
+{
+    char name_esc[512], host_esc[512], user_esc[512], pass_esc[512];
+    char pk_esc[2100], dom_esc[512], sec_esc[128], cd_esc[32];
+    json_escape(c->name, name_esc, sizeof(name_esc));
+    json_escape(c->hostname, host_esc, sizeof(host_esc));
+    json_escape(c->username, user_esc, sizeof(user_esc));
+    json_escape(c->password, pass_esc, sizeof(pass_esc));
+    json_escape(c->private_key, pk_esc, sizeof(pk_esc));
+    json_escape(c->domain, dom_esc, sizeof(dom_esc));
+    json_escape(c->security, sec_esc, sizeof(sec_esc));
+    json_escape(c->color_depth, cd_esc, sizeof(cd_esc));
+    int n = snprintf(buf, cap,
+        "{\"id\":\"%s\",\"name\":\"%s\",\"protocol\":\"%s\",\"hostname\":\"%s\","
+        "\"port\":%d,\"username\":\"%s\",\"password\":\"%s\",\"private_key\":\"%s\","
+        "\"domain\":\"%s\",\"security\":\"%s\",\"color_depth\":\"%s\","
+        "\"enable_audio\":%s,\"enable_video\":%s,\"enable_printing\":%s,"
+        "\"enable_file_transfer\":%s,\"enable_wallpaper\":%s,\"enable_theming\":%s,"
+        "\"enable_font_smoothing\":%s,\"enable_full_window_drag\":%s,"
+        "\"enable_menu_animation\":%s,\"disable_copy\":%s,\"disable_paste\":%s,"
+        "\"width\":%d,\"height\":%d,\"dpi\":%d,\"created\":%ld,\"last_used\":%ld}",
+        c->id, name_esc, c->protocol, host_esc,
+        c->port, user_esc, pass_esc, pk_esc,
+        dom_esc, sec_esc, cd_esc,
+        c->enable_audio ? "true" : "false",
+        c->enable_video ? "true" : "false",
+        c->enable_printing ? "true" : "false",
+        c->enable_file_transfer ? "true" : "false",
+        c->enable_wallpaper ? "true" : "false",
+        c->enable_theming ? "true" : "false",
+        c->enable_font_smoothing ? "true" : "false",
+        c->enable_full_window_drag ? "true" : "false",
+        c->enable_menu_animation ? "true" : "false",
+        c->disable_copy ? "true" : "false",
+        c->disable_paste ? "true" : "false",
+        c->width, c->height, c->dpi, c->created, c->last_used);
+    if (n < 0 || (size_t)n >= cap) return 0;
+    return (size_t)n;
+}
+
+/* Write all connections to the .info store atomically (temp file + rename).
+ * Acquires g_connections_lock itself — callers must NOT already hold it. */
+static void persist_connections(void)
+{
+    if (!g_store_path[0]) return;
+
+    size_t cap = 2u * 1024u * 1024u;
+    char* buf = malloc(cap);
+    if (!buf) return;
+
+    size_t pos = 0;
+    pos += snprintf(buf + pos, cap - pos,
+                    "{\n  \"version\": 1,\n  \"connections\": [");
+
+    pthread_mutex_lock(&g_connections_lock);
+    for (int i = 0; i < g_connection_count; i++)
+    {
+        if (cap - pos < 8192) break;    /* leave room for one object + closer */
+        pos += snprintf(buf + pos, cap - pos, "%s\n    ", i ? "," : "");
+        pos += serialize_connection(&g_connections[i], buf + pos, cap - pos);
+    }
+    pthread_mutex_unlock(&g_connections_lock);
+
+    pos += snprintf(buf + pos, cap - pos, "\n  ]\n}\n");
+
+    mkdir_parents(g_store_path);
+    char tmp[1100];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", g_store_path);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd >= 0)
+    {
+        ssize_t w = write(fd, buf, pos);
+        close(fd);
+        if (w == (ssize_t)pos)
+            (void)rename(tmp, g_store_path);
+        else
+            (void)unlink(tmp);
+    }
+    free(buf);
+}
+
+/* Read an entire file into a malloc'd, NUL-terminated buffer. Caller frees. */
+static char* read_file_alloc(const char* path)
+{
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return NULL;
+    off_t sz = lseek(fd, 0, SEEK_END);
+    if (sz <= 0 || sz > 8 * 1024 * 1024 || lseek(fd, 0, SEEK_SET) != 0)
+    {
+        close(fd);
+        return NULL;
+    }
+    char* buf = malloc((size_t)sz + 1);
+    if (!buf) { close(fd); return NULL; }
+    ssize_t r = read(fd, buf, (size_t)sz);
+    close(fd);
+    if (r < 0) { free(buf); return NULL; }
+    buf[r] = '\0';
+    return buf;
+}
+
+/* Copy the next balanced {...} object at or after *pp into `out`. Advances *pp
+ * past the closing brace. Returns 1 on success, 0 when the array ends. Respects
+ * quoted strings and escapes; connection objects are flat so this is exact. */
+static int next_json_object(const char** pp, char* out, size_t cap)
+{
+    const char* p = *pp;
+    while (*p && *p != '{' && *p != ']') p++;
+    if (*p != '{') { *pp = p; return 0; }
+
+    const char* start = p;
+    int depth = 0, in_str = 0, esc = 0;
+    for (; *p; p++)
+    {
+        char ch = *p;
+        if (in_str)
+        {
+            if (esc)            esc = 0;
+            else if (ch == '\\') esc = 1;
+            else if (ch == '"')  in_str = 0;
+            continue;
+        }
+        if (ch == '"')       in_str = 1;
+        else if (ch == '{')  depth++;
+        else if (ch == '}' && --depth == 0) { p++; break; }
+    }
+
+    size_t len = (size_t)(p - start);
+    *pp = p;
+    if (len == 0 || len >= cap) return 0;
+    memcpy(out, start, len);
+    out[len] = '\0';
+    return 1;
+}
+
+/* Load connections from the .info store into the in-memory table.
+ * Acquires g_connections_lock itself — callers must NOT already hold it. */
+static void load_connections(void)
+{
+    char* file = read_file_alloc(g_store_path);
+    if (!file) return;
+
+    const char* arr = strstr(file, "\"connections\"");
+    const char* p = arr ? arr + strlen("\"connections\"") : file;
+    char obj[8192];
+
+    pthread_mutex_lock(&g_connections_lock);
+    while (g_connection_count < MAX_CONNECTIONS && next_json_object(&p, obj, sizeof(obj)))
+    {
+        GuacConnection* c = &g_connections[g_connection_count];
+        memset(c, 0, sizeof(*c));
+        json_field_str(obj, "id", c->id, sizeof(c->id));
+        if (!c->id[0]) generate_id(c->id, sizeof(c->id));
+        json_field_str(obj, "name", c->name, sizeof(c->name));
+        json_field_str(obj, "protocol", c->protocol, sizeof(c->protocol));
+        json_field_str(obj, "hostname", c->hostname, sizeof(c->hostname));
+        c->port = json_field_int(obj, "port");
+        json_field_str(obj, "username", c->username, sizeof(c->username));
+        json_field_str(obj, "password", c->password, sizeof(c->password));
+        json_field_str(obj, "private_key", c->private_key, sizeof(c->private_key));
+        json_field_str(obj, "domain", c->domain, sizeof(c->domain));
+        json_field_str(obj, "security", c->security, sizeof(c->security));
+        json_field_str(obj, "color_depth", c->color_depth, sizeof(c->color_depth));
+        if (!c->color_depth[0]) snprintf(c->color_depth, sizeof(c->color_depth), "32");
+        c->enable_audio = json_field_bool(obj, "enable_audio");
+        c->enable_video = json_field_bool(obj, "enable_video");
+        c->enable_printing = json_field_bool(obj, "enable_printing");
+        c->enable_file_transfer = json_field_bool(obj, "enable_file_transfer");
+        c->enable_wallpaper = json_field_bool(obj, "enable_wallpaper");
+        c->enable_theming = json_field_bool(obj, "enable_theming");
+        c->enable_font_smoothing = json_field_bool(obj, "enable_font_smoothing");
+        c->enable_full_window_drag = json_field_bool(obj, "enable_full_window_drag");
+        c->enable_menu_animation = json_field_bool(obj, "enable_menu_animation");
+        c->disable_copy = json_field_bool(obj, "disable_copy");
+        c->disable_paste = json_field_bool(obj, "disable_paste");
+        c->width = json_field_int(obj, "width");
+        c->height = json_field_int(obj, "height");
+        c->dpi = json_field_int(obj, "dpi");
+        if (c->width <= 0) c->width = 1024;
+        if (c->height <= 0) c->height = 768;
+        if (c->dpi <= 0) c->dpi = 96;
+        c->created = json_field_long(obj, "created");
+        c->last_used = json_field_long(obj, "last_used");
+        c->active = 0;                  /* no live sessions after a restart */
+        if (c->protocol[0] && c->hostname[0])
+            g_connection_count++;       /* else: leave slot for the next object */
+    }
+    pthread_mutex_unlock(&g_connections_lock);
+    free(file);
 }
 
 static char* handle_list_connections(void)
@@ -323,11 +589,15 @@ static char* handle_add_connection(const char* message)
     c->created = (long)time(NULL);
     c->last_used = 0;
     g_connection_count++;
+    char new_id[64];
+    snprintf(new_id, sizeof(new_id), "%s", c->id);
     pthread_mutex_unlock(&g_connections_lock);
+
+    persist_connections();
 
     char buf[512];
     snprintf(buf, sizeof(buf),
-        "{\"response\":\"success\",\"message\":\"Connection added\",\"connection_id\":\"%s\"}", c->id);
+        "{\"response\":\"success\",\"message\":\"Connection added\",\"connection_id\":\"%s\"}", new_id);
     return strdup(buf);
 }
 
@@ -366,6 +636,7 @@ static char* handle_update_connection(const char* message)
                 snprintf(g_connections[i].color_depth, sizeof(g_connections[i].color_depth), "%s", val);
 
             pthread_mutex_unlock(&g_connections_lock);
+            persist_connections();
             return strdup("{\"response\":\"success\",\"message\":\"Connection updated\"}");
         }
     }
@@ -388,6 +659,7 @@ static char* handle_delete_connection(const char* message)
             g_connections[i] = g_connections[g_connection_count - 1];
             g_connection_count--;
             pthread_mutex_unlock(&g_connections_lock);
+            persist_connections();
             return strdup("{\"response\":\"success\",\"message\":\"Connection deleted\"}");
         }
     }
@@ -473,6 +745,8 @@ static char* handle_connect(const char* message)
         g_sessions[g_session_count++] = session;
     pthread_mutex_unlock(&g_sessions_lock);
 
+    persist_connections();          /* last_used changed — keep the store fresh */
+
     char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"response\":\"success\",\"session_id\":\"%s\",\"protocol\":\"%s\","
@@ -534,15 +808,34 @@ static char* handle_list_protocols(void)
     return strdup(buf);
 }
 
+/* Discard the in-memory table and reload it from the .info store. */
+static char* handle_reload_connections(void)
+{
+    pthread_mutex_lock(&g_connections_lock);
+    g_connection_count = 0;
+    pthread_mutex_unlock(&g_connections_lock);
+
+    load_connections();
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"response\":\"success\",\"message\":\"Connections reloaded\",\"connection_count\":%d}",
+        g_connection_count);
+    return strdup(buf);
+}
+
 static char* handle_get_settings(void)
 {
-    char buf[512];
+    char buf[1536];
+    char path_esc[1200];
+    json_escape(g_store_path, path_esc, sizeof(path_esc));
     snprintf(buf, sizeof(buf),
         "{\"response\":\"success\",\"settings\":{"
         "\"connection_count\":%d,"
-        "\"session_count\":%d,\"max_connections\":%d,\"max_sessions\":%d}}",
+        "\"session_count\":%d,\"max_connections\":%d,\"max_sessions\":%d,"
+        "\"persistent\":true,\"storage_path\":\"%s\"}}",
         g_connection_count, g_session_count,
-        MAX_CONNECTIONS, MAX_SESSIONS);
+        MAX_CONNECTIONS, MAX_SESSIONS, path_esc);
     return strdup(buf);
 }
 
@@ -565,15 +858,21 @@ const char* guac_mgmt_handle(const char* command, const char* body, size_t* out_
             char action[32] = "";
             json_field_str(body, "action", action, sizeof(action));
             if (strcmp(action, "get") == 0)
-                result = handle_get_connection(body);
+            {
+                char gid[64] = "";
+                json_field_str(body, "id", gid, sizeof(gid));
+                result = handle_get_connection(gid);
+            }
             else if (strcmp(action, "add") == 0)
                 result = handle_add_connection(body);
             else if (strcmp(action, "update") == 0)
                 result = handle_update_connection(body);
             else if (strcmp(action, "delete") == 0)
                 result = handle_delete_connection(body);
+            else if (strcmp(action, "reload") == 0)
+                result = handle_reload_connections();
             else
-                result = json_error("Unknown action (use: get, add, update, delete)");
+                result = json_error("Unknown action (use: get, add, update, delete, reload)");
         }
     }
     else if (strcmp(command, "users") == 0)
@@ -670,6 +969,8 @@ int guac_mgmt_init(void)
     memset(g_sessions, 0, sizeof(g_sessions));
     g_connection_count = 0;
     g_session_count = 0;
+    resolve_store_path();
+    load_connections();     /* restore persisted connections from the .info store */
     return 0;
 }
 
