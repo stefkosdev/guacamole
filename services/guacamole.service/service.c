@@ -359,6 +359,19 @@ static void* connection_thread(void* arg)
     return NULL;
 }
 
+/* Pump the Kin IPC mailbox so management API calls (routed from http.service
+ * via the "guacamole" event) are actually processed. kin_wait_messages() waits
+ * briefly on the mailbox then dispatches any queued messages to ipc_handler, so
+ * this loop is cheap. It runs on its own thread because the main thread blocks
+ * in accept() on the Unix socket serving the Guacamole protocol. */
+static void* ipc_pump_thread(void* arg)
+{
+    (void)arg;
+    while (g_running)
+        kin_wait_messages();
+    return NULL;
+}
+
 int main(int argc, char* argv[])
 {
     if (argc < 2)
@@ -384,6 +397,14 @@ int main(int argc, char* argv[])
     {
         kin_message_callback("guacamole", ipc_handler, NULL);
     }
+
+    /* Pump the IPC mailbox on a dedicated thread so management API calls are
+     * processed while the main thread serves the Guacamole protocol socket. */
+    pthread_t ipc_tid;
+    if (pthread_create(&ipc_tid, NULL, ipc_pump_thread, NULL) == 0)
+        pthread_detach(ipc_tid);
+    else
+        kin_log_info("guacamole", "Failed to start IPC pump thread");
 
     /* Signal handling */
     signal(SIGINT, on_signal);
