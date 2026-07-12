@@ -70,7 +70,7 @@
                                     "flex": 1,
                                     "children": [
                                       { "type": "Input", "id": "edit-name", "placeholder": "Connection name *", "aria-label": "Name" },
-                                      { "type": "Select", "id": "edit-protocol", "options": "vnc|rdp|ssh|telnet|kubernetes", "value": "rdp", "aria-label": "Protocol" },
+                                      { "type": "Select", "id": "edit-protocol", "options": ["vnc", "rdp", "ssh", "telnet", "kubernetes"], "value": "rdp", "aria-label": "Protocol" },
                                       { "type": "Input", "id": "edit-hostname", "placeholder": "Hostname or IP *", "aria-label": "Hostname" },
                                       { "type": "Input", "id": "edit-port", "placeholder": "Port (default per protocol)", "aria-label": "Port" },
                                       { "type": "Input", "id": "edit-username", "placeholder": "Username", "aria-label": "Username" }
@@ -83,8 +83,8 @@
                                     "children": [
                                       { "type": "Input", "id": "edit-password", "placeholder": "Password", "aria-label": "Password" },
                                       { "type": "Input", "id": "edit-domain", "placeholder": "Domain (RDP)", "aria-label": "Domain" },
-                                      { "type": "Select", "id": "edit-security", "options": "any|nla|tls|rdp", "value": "any", "aria-label": "RDP security" },
-                                      { "type": "Select", "id": "edit-color-depth", "options": "8|16|24|32", "value": "32", "aria-label": "Color depth" },
+                                      { "type": "Select", "id": "edit-security", "options": ["any", "nla", "tls", "rdp"], "value": "any", "aria-label": "RDP security" },
+                                      { "type": "Select", "id": "edit-color-depth", "options": ["8", "16", "24", "32"], "value": "32", "aria-label": "Color depth" },
                                       {
                                         "type": "Row",
                                         "gap": "8px",
