@@ -146,44 +146,7 @@
                     "type": "Frame",
                     "title": "Active sessions",
                     "children": [
-                      {
-                        "type": "Row",
-                        "id": "sessions-layout",
-                        "gap": "10px",
-                        "children": [
-                          {
-                            "type": "Column",
-                            "id": "sessions-pane",
-                            "gap": "6px",
-                            "children": [
-                              { "type": "Column", "id": "sessions-list", "gap": "4px" },
-                              { "type": "Button", "id": "btn-refresh-sessions", "label": "Refresh" },
-                              { "type": "Text", "id": "sessions-status", "text": "" }
-                            ]
-                          },
-                          {
-                            "type": "Column",
-                            "id": "viewer-pane",
-                            "flex": 1,
-                            "gap": "6px",
-                            "children": [
-                              { "type": "Column", "id": "viewer-container" },
-                              {
-                                "type": "Row",
-                                "id": "viewer-toolbar",
-                                "gap": "8px",
-                                "wrap": true,
-                                "children": [
-                                  { "type": "Text", "id": "viewer-title", "text": "No session selected" },
-                                  { "type": "Button", "id": "btn-viewer-fullscreen", "label": "Fullscreen" },
-                                  { "type": "Button", "id": "btn-viewer-disconnect", "label": "Disconnect" },
-                                  { "type": "Text", "id": "viewer-status", "text": "" }
-                                ]
-                              }
-                            ]
-                          }
-                        ]
-                      }
+                      { "type": "Column", "id": "sessions-root" }
                     ]
                   }
                 ]

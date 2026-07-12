@@ -132,8 +132,53 @@ function sessionTooltip(s) {
     ].join('\n');
 }
 
+let elSessionsList = null;
+let elViewerContainer = null;
+let elViewerStatus = null;
+
+function setViewerStatus(text) {
+    if (elViewerStatus) elViewerStatus.textContent = text || '';
+}
+
+/* Build the Sessions two-pane layout as plain DOM: a left vertical session list
+ * and a right pane whose preview fills the tab, with the buttons underneath.
+ * kin-ui's flex containers don't give us reliable fill-the-window sizing, so we
+ * own this subtree directly. Idempotent. */
+function ensureSessionsLayout(ui) {
+    const root = ui.getById('sessions-root');
+    if (!root || root._built) return;
+    root._built = true;
+    root.innerHTML =
+        '<div class="sess-wrap">' +
+          '<div class="sess-list" id="sessions-list"></div>' +
+          '<div class="sess-view">' +
+            '<div class="sess-canvas" id="viewer-container"></div>' +
+            '<div class="sess-toolbar">' +
+              '<button type="button" class="btn-sm" data-act="fullscreen">Fullscreen</button>' +
+              '<button type="button" class="btn-sm btn-remove" data-act="disconnect">Disconnect</button>' +
+              '<button type="button" class="btn-sm" data-act="refresh">Refresh</button>' +
+              '<span class="sess-status" id="viewer-status"></span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+    elSessionsList = root.querySelector('#sessions-list');
+    elViewerContainer = root.querySelector('#viewer-container');
+    elViewerStatus = root.querySelector('#viewer-status');
+
+    root.querySelector('[data-act="fullscreen"]').addEventListener('click', () => viewer?.fullscreen());
+    root.querySelector('[data-act="refresh"]').addEventListener('click', () => loadSessions(ui));
+    root.querySelector('[data-act="disconnect"]').addEventListener('click', () => {
+        viewer?.disconnect();
+        selectedSessionIdx = -1;
+        setViewerStatus('');
+        rebuildSessionsList(ui);
+    });
+}
+
 function rebuildSessionsList(ui) {
-    const list = ui.getById('sessions-list');
+    ensureSessionsLayout(ui);
+    const list = elSessionsList;
     if (!list) return;
     list.replaceChildren();
 
@@ -168,21 +213,18 @@ function rebuildSessionsList(ui) {
 
 function ensureViewer(ui) {
     if (viewer) return viewer;
-    const container = ui.getById('viewer-container');
-    viewer = new GuacViewer(container, (state) => {
-        ui.setAttrs('viewer-status', { text: 'Viewer: ' + state });
-    });
+    ensureSessionsLayout(ui);
+    viewer = new GuacViewer(elViewerContainer, (state) => setViewerStatus('Viewer: ' + state));
     return viewer;
 }
 
-/** Open the live remote desktop for a session in the right-hand pane. */
+/** Open the live remote desktop for a session in the right-hand (fill) pane. */
 function selectSession(ui, idx) {
     const s = sessions[idx];
     if (!s || !s.connection_id) return;
     selectedSessionIdx = idx;
     rebuildSessionsList(ui);
-    ui.setAttrs('viewer-title', { text: sessionShortName(s) });
-    ui.setAttrs('viewer-status', { text: 'Viewer: connecting...' });
+    setViewerStatus('Viewer: connecting...');
     ensureViewer(ui).connect(s.connection_id);
 }
 
@@ -228,17 +270,15 @@ async function loadConnections(ui) {
 }
 
 async function loadSessions(ui) {
-    setStatus(ui, 'sessions-status', 'Loading sessions...');
+    ensureSessionsLayout(ui);
     const data = await guacApi('active');
     if (data.response === 'success' && Array.isArray(data.sessions)) {
         sessions = data.sessions;
-        rebuildSessionsList(ui);
-        setStatus(ui, 'sessions-status', sessions.length + ' active session(s).');
     } else {
         sessions = [];
-        rebuildSessionsList(ui);
-        setStatus(ui, 'sessions-status', data.message || 'No session data.');
     }
+    if (selectedSessionIdx >= sessions.length) selectedSessionIdx = -1;
+    rebuildSessionsList(ui);
 }
 
 function openAdd(ui) {
@@ -391,9 +431,13 @@ async function connectSession(ui, idx) {
         session_id: 'web-' + Date.now()
     });
     if (resp.response === 'success') {
-        setStatus(ui, 'conn-status', 'Connected to ' + c.name + ' (session: ' + (resp.session_id || '').substring(0, 12) + '...).');
+        setStatus(ui, 'conn-status', 'Connected to ' + c.name + '.');
         await loadConnections(ui);
         await loadSessions(ui);
+        /* Move the user to the Sessions tab and open the live view. */
+        ui.getById('main-tabs')?.kinSet?.('selectedIndex', 1);
+        const newIdx = sessions.findIndex(s => s.id === resp.session_id);
+        if (newIdx >= 0) selectSession(ui, newIdx);
     } else {
         setStatus(ui, 'conn-status', resp.message || 'Connection failed.');
     }
@@ -402,17 +446,22 @@ async function connectSession(ui, idx) {
 async function disconnectSession(ui, idx) {
     const s = sessions[idx];
     if (!s || !s.id) return;
-    setStatus(ui, 'sessions-status', 'Disconnecting...');
+    const wasSelected = (idx === selectedSessionIdx);
+    setViewerStatus('Disconnecting...');
     const resp = await guacApi('connection', {
         action: 'disconnect',
         id: s.id
     });
     if (resp.response === 'success') {
+        if (wasSelected) {
+            viewer?.disconnect();
+            selectedSessionIdx = -1;
+            setViewerStatus('');
+        }
         await loadSessions(ui);
         await loadConnections(ui);
-        setStatus(ui, 'sessions-status', 'Session disconnected.');
     } else {
-        setStatus(ui, 'sessions-status', resp.message || 'Disconnect failed.');
+        setViewerStatus(resp.message || 'Disconnect failed.');
     }
 }
 
@@ -465,15 +514,7 @@ async function main() {
     ui.getById('btn-reload')?.addEventListener('kin-press', () => loadConnections(ui));
     ui.getById('btn-edit-save')?.addEventListener('kin-press', () => saveConnection(ui));
     ui.getById('btn-edit-cancel')?.addEventListener('kin-press', () => closeEditor(ui));
-    ui.getById('btn-refresh-sessions')?.addEventListener('kin-press', () => loadSessions(ui));
-    ui.getById('btn-viewer-fullscreen')?.addEventListener('kin-press', () => viewer?.fullscreen());
-    ui.getById('btn-viewer-disconnect')?.addEventListener('kin-press', () => {
-        viewer?.disconnect();
-        selectedSessionIdx = -1;
-        ui.setAttrs('viewer-title', { text: 'No session selected' });
-        ui.setAttrs('viewer-status', { text: '' });
-        rebuildSessionsList(ui);
-    });
+    ensureSessionsLayout(ui);   /* Sessions tab layout + its buttons are custom DOM */
     try {
         await Promise.all([
             loadConnections(ui),

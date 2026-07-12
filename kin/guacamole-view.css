@@ -23,10 +23,10 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 [kin-theme="kin-dark"] .btn-remove { border-color: #f66; color: #f66; }
 [kin-theme="kin-dark"] .btn-remove:hover { background: #422; }
 
-/* --- Sessions tab: left session list + right live viewer --- */
-/* The kin-ui height chain does not propagate 100% down to us, so size the
- * layout directly against the viewport (vh) — independent of the parents. */
-#sessions-layout {
+/* --- Sessions tab (a self-owned DOM subtree; see ensureSessionsLayout) --- */
+/* Size the layout directly against the viewport so it fills the tab regardless
+ * of how kin-ui sizes its containers. */
+.sess-wrap {
     display: flex;
     align-items: stretch;
     gap: 10px;
@@ -35,11 +35,33 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 }
 
 /* Left: fixed-width vertical list of sessions (scrolls internally). */
-#sessions-pane { width: 220px; flex: 0 0 220px; min-width: 170px; display: flex; flex-direction: column; min-height: 0; }
-#sessions-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.sess-list {
+    flex: 0 0 220px;
+    width: 220px;
+    min-width: 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
 
-/* Right: viewer fills the remaining space; toolbar sits at the bottom. */
-#viewer-pane { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+/* Right: preview fills; toolbar sits underneath. */
+.sess-view { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sess-canvas {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    background: #000;
+    border: 1px solid #444;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.sess-canvas:fullscreen { border: 0; border-radius: 0; }
+.sess-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sess-status { color: #666; font-size: 13px; margin-left: auto; }
 
 .session-item {
     display: flex;
@@ -59,21 +81,6 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 .session-kill { flex: 0 0 auto; line-height: 1; padding: 0 6px; }
 .session-empty { color: #888; font-size: 13px; padding: 6px 2px; }
 
-/* Live remote-desktop surface — fills as much of the window as possible. */
-#viewer-container {
-    position: relative;
-    flex: 1 1 auto;
-    min-height: 0;
-    background: #000;
-    border: 1px solid #444;
-    border-radius: 4px;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-#viewer-container:fullscreen { height: 100vh; width: 100vw; border: 0; border-radius: 0; }
-#viewer-toolbar { flex: 0 0 auto; align-items: center; }
 .guac-display { margin: auto; line-height: 0; }
 .guac-display canvas { display: block; }
 
