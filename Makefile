@@ -22,6 +22,11 @@ test:
 test-unit:
 	$(MAKE) -C $(SERVICE_DIR)/tests run
 
+# Full live path through Kin (http.service -> polykernel -> guacamole.service).
+# Needs a running Kin; set KIN_SESSION=<kin_session cookie> for the HTTP layer.
+integration:
+	./scripts/integration-test-kin.sh
+
 # Full end-to-end test: a persisted connection drives a real VNC session
 # (service under a minimal Kin manager stub; needs Docker + a built service).
 e2e:
@@ -38,4 +43,4 @@ clean:
 	$(MAKE) -C $(SERVICE_DIR) clean
 	$(MAKE) -C $(SERVICE_DIR)/tests clean
 
-.PHONY: all service build-apps deb test test-unit e2e vnc-up vnc-down clean
+.PHONY: all service build-apps deb test test-unit integration e2e vnc-up vnc-down clean

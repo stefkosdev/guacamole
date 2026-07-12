@@ -102,6 +102,33 @@ prints `apt` instructions for `tigervnc` / `x11vnc` instead.
 > The `vnc-rfb-probe.py` helper (`scripts/vnc-rfb-probe.py <host> <port>`) can be
 > used on its own to confirm any VNC server is reachable and speaks RFB.
 
+## Layer 4 — Live Kin integration (through the polykernel)
+
+`scripts/integration-test-kin.sh` (`make integration`) exercises the full path a
+real request takes:
+
+```
+browser -> http.service -> polykernel (router) -> guacamole.service -> .info
+```
+
+It proves what the unit tests cannot: the polykernel route family for
+`/api/guacamole/*`, the `sessionid` strip (a read must not be mistaken for an
+action — the bug where added connections never appeared in the list), the
+service's IPC message pump, and persistence — all together.
+
+The polykernel enforces auth **before** routing, so the HTTP assertions need a
+valid session. Pass it via `KIN_SESSION` (the `kin_session` cookie from an
+authenticated browser — DevTools ▸ Application ▸ Cookies):
+
+```bash
+KIN_SESSION=<kin_session> make integration
+```
+
+It adds a connection, asserts a subsequent list shows it, then deletes it and
+asserts it is gone. Without `KIN_SESSION`, only the no-auth layer runs (the
+service's protocol socket), since unauthenticated API calls all return
+"No valid Kin session" and cannot assert routing.
+
 ## Continuous / pre-commit
 
 Layer 1 is the gate — it is deterministic, fast, and has no external
