@@ -15,6 +15,31 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+/* Open a loopback TCP listener so "connect" has a reachable target. Returns the
+ * listening fd and writes the chosen ephemeral port to *port_out. */
+static int open_listener(int* port_out)
+{
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    a.sin_port = 0;
+    if (bind(fd, (struct sockaddr*)&a, sizeof(a)) != 0 || listen(fd, 1) != 0)
+    {
+        close(fd);
+        return -1;
+    }
+    socklen_t sl = sizeof(a);
+    getsockname(fd, (struct sockaddr*)&a, &sl);
+    *port_out = ntohs(a.sin_port);
+    return fd;
+}
 
 /* ---- tiny assertion framework ------------------------------------------ */
 
@@ -322,24 +347,35 @@ static void test_skip_incomplete_objects(void)
     free(list);
 }
 
-static void test_connect_updates_last_used(void)
+static void test_connect_reachable(void)
 {
-    g_current = "connect_last_used";
+    g_current = "connect_reachable";
     reset_store();
-    char* a = call("connections",
-        "{\"action\":\"add\",\"name\":\"C\",\"protocol\":\"vnc\",\"hostname\":\"h\"}");
+
+    /* A live loopback listener makes the target genuinely reachable. */
+    int port = 0;
+    int lfd = open_listener(&port);
+    CHECK(lfd >= 0, "opened loopback listener");
+
+    char add[256];
+    snprintf(add, sizeof(add),
+        "{\"action\":\"add\",\"name\":\"C\",\"protocol\":\"vnc\","
+        "\"hostname\":\"127.0.0.1\",\"port\":%d}", port);
+    char* a = call("connections", add);
     char id[64]; extract_id(a, id, sizeof(id)); free(a);
 
     char body[256];
     snprintf(body, sizeof(body),
         "{\"action\":\"connect\",\"id\":\"%s\",\"username\":\"u\",\"session_id\":\"web-1\"}", id);
     char* c = call("connection", body);
-    CHECK(CONTAINS(c, "\"response\":\"success\""), "connect succeeds");
+    CHECK(CONTAINS(c, "\"response\":\"success\""), "connect to reachable host succeeds");
     free(c);
 
     char* active = call("active", NULL);
     CHECK(CONTAINS(active, "\"protocol\":\"vnc\""), "session listed as active");
     free(active);
+
+    if (lfd >= 0) close(lfd);
 
     /* last_used should now be persisted (non-zero) after restart. */
     guac_mgmt_init();
@@ -347,6 +383,53 @@ static void test_connect_updates_last_used(void)
     char* g = call("connections", body);
     CHECK(!CONTAINS(g, "\"last_used\":0"), "last_used persisted after connect");
     free(g);
+}
+
+static void test_connect_unreachable_fails(void)
+{
+    g_current = "connect_unreachable";
+    reset_store();
+
+    /* Bind a listener, capture its port, then close it so nothing is listening. */
+    int port = 0;
+    int lfd = open_listener(&port);
+    if (lfd >= 0) close(lfd);
+
+    char add[256];
+    snprintf(add, sizeof(add),
+        "{\"action\":\"add\",\"name\":\"Dead\",\"protocol\":\"vnc\","
+        "\"hostname\":\"127.0.0.1\",\"port\":%d}", port);
+    char* a = call("connections", add);
+    char id[64]; extract_id(a, id, sizeof(id)); free(a);
+
+    char body[256];
+    snprintf(body, sizeof(body),
+        "{\"action\":\"connect\",\"id\":\"%s\",\"username\":\"u\",\"session_id\":\"web-x\"}", id);
+    char* c = call("connection", body);
+    CHECK(CONTAINS(c, "\"response\":\"fail\""), "connect to a dead port fails");
+    free(c);
+
+    /* A failed connect must not leave an active session behind. */
+    char* active = call("active", NULL);
+    CHECK(CONTAINS(active, "\"sessions\":[]"), "no session created for a failed connect");
+    free(active);
+}
+
+static void test_connect_bad_hostname_fails(void)
+{
+    g_current = "connect_bad_hostname";
+    reset_store();
+    char* a = call("connections",
+        "{\"action\":\"add\",\"name\":\"Bad\",\"protocol\":\"rdp\","
+        "\"hostname\":\"no.such.host.invalid.\",\"port\":3389}");
+    char id[64]; extract_id(a, id, sizeof(id)); free(a);
+
+    char body[256];
+    snprintf(body, sizeof(body),
+        "{\"action\":\"connect\",\"id\":\"%s\",\"username\":\"u\",\"session_id\":\"web-y\"}", id);
+    char* c = call("connection", body);
+    CHECK(CONTAINS(c, "\"response\":\"fail\""), "connect to an unresolvable host fails");
+    free(c);
 }
 
 int main(void)
@@ -371,7 +454,9 @@ int main(void)
     test_settings_report_storage();
     test_corrupt_file_tolerated();
     test_skip_incomplete_objects();
-    test_connect_updates_last_used();
+    test_connect_reachable();
+    test_connect_unreachable_fails();
+    test_connect_bad_hostname_fails();
 
     unlink(g_store);
     guac_mgmt_cleanup();

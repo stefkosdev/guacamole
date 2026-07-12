@@ -3,6 +3,9 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <poll.h>
 #include <fcntl.h>
 #include <ctype.h>
 
@@ -699,6 +702,62 @@ static char* handle_list_sessions(void)
     return buf;
 }
 
+/* Best-effort TCP reachability probe: can we open a connection to host:port?
+ * Returns 1 if reachable, 0 otherwise (with a human-readable reason in `err`).
+ * This is what turns "Connect" into an honest operation — a bad hostname or a
+ * dead port now fails instead of silently reporting a session as connected. */
+static int tcp_reachable(const char* host, int port, int timeout_ms, char* err, size_t errcap)
+{
+    if (err && errcap) err[0] = '\0';
+    if (!host || !host[0] || port <= 0)
+    {
+        if (err) snprintf(err, errcap, "Invalid hostname or port");
+        return 0;
+    }
+
+    char portstr[16];
+    snprintf(portstr, sizeof(portstr), "%d", port);
+
+    struct addrinfo hints, *res = NULL, *rp;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    int gai = getaddrinfo(host, portstr, &hints, &res);
+    if (gai != 0)
+    {
+        if (err) snprintf(err, errcap, "Cannot resolve host '%s': %s", host, gai_strerror(gai));
+        return 0;
+    }
+
+    int ok = 0;
+    for (rp = res; rp && !ok; rp = rp->ai_next)
+    {
+        int fd = socket(rp->ai_family, rp->ai_socktype | SOCK_NONBLOCK, rp->ai_protocol);
+        if (fd < 0) continue;
+
+        if (connect(fd, rp->ai_addr, rp->ai_addrlen) == 0)
+            ok = 1;
+        else if (errno == EINPROGRESS)
+        {
+            struct pollfd pfd = { fd, POLLOUT, 0 };
+            if (poll(&pfd, 1, timeout_ms) > 0 && (pfd.revents & POLLOUT))
+            {
+                int soerr = 0;
+                socklen_t sl = sizeof(soerr);
+                if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &soerr, &sl) == 0 && soerr == 0)
+                    ok = 1;
+            }
+        }
+        close(fd);
+    }
+
+    freeaddrinfo(res);
+    if (!ok && err && !err[0])
+        snprintf(err, errcap, "Cannot reach %s:%d (host down, wrong port, or blocked)", host, port);
+    return ok;
+}
+
 static char* handle_connect(const char* message)
 {
     if (!message || !message[0]) return json_error("Missing connection data");
@@ -708,36 +767,63 @@ static char* handle_connect(const char* message)
     json_field_str(message, "session_id", session_id, sizeof(session_id));
     if (!id[0]) return json_error("Missing connection id");
 
+    /* Snapshot the target under lock; the reachability probe below may block for
+     * up to a few seconds, so it must not hold g_connections_lock. */
+    char thost[256] = "", tproto[32] = "", tname[256] = "";
+    int tport = 0;
+    int found = 0;
     pthread_mutex_lock(&g_connections_lock);
-    GuacConnection* target = NULL;
     for (int i = 0; i < g_connection_count; i++)
     {
         if (strcmp(g_connections[i].id, id) == 0)
         {
-            target = &g_connections[i];
+            snprintf(thost, sizeof(thost), "%s", g_connections[i].hostname);
+            snprintf(tproto, sizeof(tproto), "%s", g_connections[i].protocol);
+            snprintf(tname, sizeof(tname), "%s", g_connections[i].name);
+            tport = g_connections[i].port;
+            found = 1;
             break;
         }
     }
-    if (!target)
+    pthread_mutex_unlock(&g_connections_lock);
+
+    if (!found) return json_error("Connection not found");
+
+    /* Verify the backend actually accepts a TCP connection before we report a
+     * session as connected. Kubernetes has no single TCP endpoint here, so it
+     * is skipped. */
+    if (strcasecmp(tproto, "kubernetes") != 0)
     {
-        pthread_mutex_unlock(&g_connections_lock);
-        return json_error("Connection not found");
+        char reason[256];
+        if (!tcp_reachable(thost, tport, 5000, reason, sizeof(reason)))
+            return json_error(reason);
     }
 
     GuacSession session;
     memset(&session, 0, sizeof(session));
     generate_id(session.id, sizeof(session.id));
-    snprintf(session.connection_id, sizeof(session.connection_id), "%s", target->id);
+    snprintf(session.connection_id, sizeof(session.connection_id), "%s", id);
     snprintf(session.username, sizeof(session.username), "%s", username);
     snprintf(session.session_id, sizeof(session.session_id), "%s", session_id);
-    snprintf(session.protocol, sizeof(session.protocol), "%s", target->protocol);
-    snprintf(session.hostname, sizeof(session.hostname), "%s", target->hostname);
-    session.port = target->port;
+    snprintf(session.protocol, sizeof(session.protocol), "%s", tproto);
+    snprintf(session.hostname, sizeof(session.hostname), "%s", thost);
+    session.port = tport;
     session.started = (long)time(NULL);
     session.last_active = session.started;
     session.active = 1;
-    target->active = 1;
-    target->last_used = session.started;
+
+    /* Re-acquire the lock to mark the connection active (it may have been
+     * deleted while we probed). */
+    pthread_mutex_lock(&g_connections_lock);
+    for (int i = 0; i < g_connection_count; i++)
+    {
+        if (strcmp(g_connections[i].id, id) == 0)
+        {
+            g_connections[i].active = 1;
+            g_connections[i].last_used = session.started;
+            break;
+        }
+    }
     pthread_mutex_unlock(&g_connections_lock);
 
     pthread_mutex_lock(&g_sessions_lock);
@@ -752,7 +838,7 @@ static char* handle_connect(const char* message)
         "{\"response\":\"success\",\"session_id\":\"%s\",\"protocol\":\"%s\","
         "\"hostname\":\"%s\",\"port\":%d,\"connection_name\":\"%s\"}",
         session.id, session.protocol, session.hostname,
-        session.port, target->name);
+        session.port, tname);
     return strdup(buf);
 }
 
