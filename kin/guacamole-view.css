@@ -24,16 +24,22 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 [kin-theme="kin-dark"] .btn-remove:hover { background: #422; }
 
 /* --- Sessions tab: left session list + right live viewer --- */
-/* Make the whole app fill the window so the viewer can take the rest. */
-#host > * { height: 100%; }
-#sessions-layout { align-items: stretch; height: 100%; }
+/* The kin-ui height chain does not propagate 100% down to us, so size the
+ * layout directly against the viewport (vh) — independent of the parents. */
+#sessions-layout {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    height: calc(100vh - 140px);
+    min-height: 320px;
+}
 
-/* Left: fixed-width vertical list of sessions. */
-#sessions-pane { width: 220px; flex: 0 0 220px; min-width: 170px; }
-#sessions-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: calc(100vh - 170px); }
+/* Left: fixed-width vertical list of sessions (scrolls internally). */
+#sessions-pane { width: 220px; flex: 0 0 220px; min-width: 170px; display: flex; flex-direction: column; min-height: 0; }
+#sessions-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 
 /* Right: viewer fills the remaining space; toolbar sits at the bottom. */
-#viewer-pane { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+#viewer-pane { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
 
 .session-item {
     display: flex;
@@ -57,8 +63,7 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 #viewer-container {
     position: relative;
     flex: 1 1 auto;
-    height: calc(100vh - 150px);
-    min-height: 280px;
+    min-height: 0;
     background: #000;
     border: 1px solid #444;
     border-radius: 4px;
