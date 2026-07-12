@@ -59,6 +59,26 @@ install_to_kin() {
     mkdir -p "$(dirname "$KIN_SERVICE_SRC")"
     rsync -av --delete "$SCRIPT_DIR/services/guacamole.service/" "$KIN_SERVICE_SRC/"
 
+    # Build the service binary and deploy it where the Kin manager launches
+    # workers (build/services/guacamole.service). A source-only copy is not
+    # enough: the manager runs the compiled binary, so it must be built (against
+    # the Kin library) and installed here, otherwise a clean Kin build has no
+    # guacamole.service to launch.
+    echo "Building guacamole.service binary..."
+    mkdir -p "$SCRIPT_DIR/libraries"
+    ln -sfn "$KIN_BUILD_PATH/libraries/kin.library" "$SCRIPT_DIR/libraries/kin.library"
+    ln -sfn "$KIN_SOURCE_PATH/libraries/kin" "$SCRIPT_DIR/libraries/kin"
+    if make -C "$SCRIPT_DIR/services/guacamole.service"; then
+        mkdir -p "$KIN_BUILD_PATH/services"
+        # rm first: the running worker may hold the file open (Text file busy).
+        rm -f "$KIN_BUILD_PATH/services/guacamole.service"
+        cp "$SCRIPT_DIR/services/guacamole.service/guacamole.service" \
+           "$KIN_BUILD_PATH/services/guacamole.service"
+        echo "Deployed guacamole.service binary to $KIN_BUILD_PATH/services/"
+    else
+        echo "WARNING: guacamole.service build failed; binary not deployed." >&2
+    fi
+
     echo "Syncing repository/ to build/repository/..."
     rsync -av --delete "$KIN_SOURCE_PATH/repository/" "$KIN_BUILD_PATH/repository/"
 
