@@ -143,28 +143,44 @@
                 "label": "Sessions",
                 "children": [
                   {
-                    "type": "Column",
-                    "gap": "8px",
+                    "type": "Frame",
+                    "title": "Active sessions",
                     "children": [
                       {
-                        "type": "Frame",
-                        "title": "Active sessions",
+                        "type": "Row",
+                        "id": "sessions-layout",
+                        "gap": "10px",
                         "children": [
                           {
-                            "type": "ListTable",
-                            "id": "sessions-table",
-                            "headers": "Session ID|User|Connection|Protocol|Host|Port|Started|Actions",
-                            "max-height": "55vh"
-                          },
-                          {
-                            "type": "Row",
-                            "gap": "8px",
-                            "wrap": true,
+                            "type": "Column",
+                            "id": "sessions-pane",
+                            "gap": "6px",
                             "children": [
-                              { "type": "Button", "id": "btn-refresh-sessions", "label": "Refresh" }
+                              { "type": "Column", "id": "sessions-list", "gap": "4px" },
+                              { "type": "Button", "id": "btn-refresh-sessions", "label": "Refresh" },
+                              { "type": "Text", "id": "sessions-status", "text": "" }
                             ]
                           },
-                          { "type": "Text", "id": "sessions-status", "text": "" }
+                          {
+                            "type": "Column",
+                            "id": "viewer-pane",
+                            "flex": 1,
+                            "gap": "6px",
+                            "children": [
+                              {
+                                "type": "Row",
+                                "gap": "8px",
+                                "wrap": true,
+                                "children": [
+                                  { "type": "Text", "id": "viewer-title", "text": "No session selected" },
+                                  { "type": "Button", "id": "btn-viewer-fullscreen", "label": "Fullscreen" },
+                                  { "type": "Button", "id": "btn-viewer-disconnect", "label": "Disconnect" }
+                                ]
+                              },
+                              { "type": "Column", "id": "viewer-container" },
+                              { "type": "Text", "id": "viewer-status", "text": "" }
+                            ]
+                          }
                         ]
                       }
                     ]

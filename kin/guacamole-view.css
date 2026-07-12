@@ -22,3 +22,51 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 [kin-theme="kin-dark"] .btn-sm:hover { background: #444; }
 [kin-theme="kin-dark"] .btn-remove { border-color: #f66; color: #f66; }
 [kin-theme="kin-dark"] .btn-remove:hover { background: #422; }
+
+/* --- Sessions tab: left session list + right live viewer --- */
+#sessions-pane { width: 220px; flex: 0 0 220px; min-width: 180px; }
+#viewer-pane { min-width: 0; }
+
+.session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fafafa;
+    cursor: pointer;
+    user-select: none;
+}
+.session-item:hover { background: #eef4ff; }
+.session-item.selected { border-color: #3a7afe; background: #e6efff; }
+.session-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-kill { flex: 0 0 auto; line-height: 1; padding: 0 6px; }
+.session-empty { color: #888; font-size: 13px; padding: 6px 2px; }
+
+/* Live remote-desktop surface. */
+#viewer-container {
+    position: relative;
+    min-height: 360px;
+    height: 60vh;
+    background: #000;
+    border: 1px solid #444;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#viewer-container:fullscreen { height: 100vh; border: 0; border-radius: 0; }
+.guac-display { margin: auto; }
+.guac-display canvas { display: block; }
+
+[kin-theme="kin-dark"] .session-item {
+    background: #2a2a2a;
+    border-color: #555;
+    color: #ddd;
+}
+[kin-theme="kin-dark"] .session-item:hover { background: #333c4d; }
+[kin-theme="kin-dark"] .session-item.selected { border-color: #5a8dfe; background: #23324d; }
+[kin-theme="kin-dark"] .session-empty { color: #999; }

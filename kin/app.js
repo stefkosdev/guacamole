@@ -1,8 +1,11 @@
 import { createApp, registerKinUI } from '../kin_ui/kin-ui.js';
+import { GuacViewer } from './guac-viewer.js';
 
 let connections = [];
 let sessions = [];
 let editIndex = -1;
+let viewer = null;
+let selectedSessionIdx = -1;
 
 function inputValue(el) {
     if (el && typeof el.kinGet === 'function')
@@ -113,28 +116,74 @@ function rebuildConnList(ui) {
     }
 }
 
+function sessionShortName(s) {
+    const host = s.hostname || s.protocol || 'session';
+    return s.protocol ? host + ' (' + s.protocol + ')' : host;
+}
+
+function sessionTooltip(s) {
+    return [
+        'Session: ' + (s.id || '-'),
+        'Connection: ' + (s.connection_id || '-'),
+        'User: ' + (s.username || '-'),
+        'Protocol: ' + (s.protocol || '-'),
+        'Host: ' + (s.hostname || '-') + ':' + (s.port || '-'),
+        'Started: ' + formatDate(s.started)
+    ].join('\n');
+}
+
 function rebuildSessionsList(ui) {
-    const table = ui.getById('sessions-table');
-    if (!table) return;
-    table.clearRows();
-    const tbody = table.tbody;
+    const list = ui.getById('sessions-list');
+    if (!list) return;
+    list.replaceChildren();
+
+    if (!sessions.length) {
+        const empty = document.createElement('div');
+        empty.className = 'session-empty';
+        empty.textContent = 'No active sessions. Use Connect on the Connections tab.';
+        list.appendChild(empty);
+        return;
+    }
+
     for (let i = 0; i < sessions.length; i++) {
         const s = sessions[i];
-        const tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td title="' + esc(s.id) + '">' + esc(s.id ? s.id.substring(0, 12) + '...' : '-') + '</td>' +
-            '<td>' + esc(s.username || '-') + '</td>' +
-            '<td>' + esc(s.connection_id ? s.connection_id.substring(0, 12) + '...' : '-') + '</td>' +
-            '<td>' + esc(s.protocol || '-') + '</td>' +
-            '<td>' + esc(s.hostname || '-') + '</td>' +
-            '<td>' + (s.port || '-') + '</td>' +
-            '<td>' + formatDate(s.started) + '</td>' +
-            '<td>' +
-            '<button type="button" class="btn-sm btn-remove" data-disconnect="' + i + '">Disconnect</button>' +
-            '</td>';
-        tr.querySelector('[data-disconnect]').addEventListener('click', () => disconnectSession(ui, i));
-        tbody.appendChild(tr);
+        const item = document.createElement('div');
+        item.className = 'session-item' + (i === selectedSessionIdx ? ' selected' : '');
+        item.title = sessionTooltip(s);   /* hover bubble with the full session info */
+        const name = document.createElement('span');
+        name.className = 'session-name';
+        name.textContent = sessionShortName(s);
+        const kill = document.createElement('button');
+        kill.type = 'button';
+        kill.className = 'btn-sm btn-remove session-kill';
+        kill.textContent = '×';
+        kill.title = 'Disconnect this session';
+        kill.addEventListener('click', (ev) => { ev.stopPropagation(); disconnectSession(ui, i); });
+        item.appendChild(name);
+        item.appendChild(kill);
+        item.addEventListener('click', () => selectSession(ui, i));
+        list.appendChild(item);
     }
+}
+
+function ensureViewer(ui) {
+    if (viewer) return viewer;
+    const container = ui.getById('viewer-container');
+    viewer = new GuacViewer(container, (state) => {
+        ui.setAttrs('viewer-status', { text: 'Viewer: ' + state });
+    });
+    return viewer;
+}
+
+/** Open the live remote desktop for a session in the right-hand pane. */
+function selectSession(ui, idx) {
+    const s = sessions[idx];
+    if (!s || !s.connection_id) return;
+    selectedSessionIdx = idx;
+    rebuildSessionsList(ui);
+    ui.setAttrs('viewer-title', { text: sessionShortName(s) });
+    ui.setAttrs('viewer-status', { text: 'Viewer: connecting...' });
+    ensureViewer(ui).connect(s.connection_id);
 }
 
 async function loadConnections(ui) {
@@ -417,6 +466,14 @@ async function main() {
     ui.getById('btn-edit-save')?.addEventListener('kin-press', () => saveConnection(ui));
     ui.getById('btn-edit-cancel')?.addEventListener('kin-press', () => closeEditor(ui));
     ui.getById('btn-refresh-sessions')?.addEventListener('kin-press', () => loadSessions(ui));
+    ui.getById('btn-viewer-fullscreen')?.addEventListener('kin-press', () => viewer?.fullscreen());
+    ui.getById('btn-viewer-disconnect')?.addEventListener('kin-press', () => {
+        viewer?.disconnect();
+        selectedSessionIdx = -1;
+        ui.setAttrs('viewer-title', { text: 'No session selected' });
+        ui.setAttrs('viewer-status', { text: '' });
+        rebuildSessionsList(ui);
+    });
     try {
         await Promise.all([
             loadConnections(ui),
