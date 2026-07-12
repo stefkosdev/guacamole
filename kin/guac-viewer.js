@@ -88,7 +88,9 @@ export class GuacViewer {
         if (!w || !h) return;
         const cw = this.container.clientWidth || w;
         const ch = this.container.clientHeight || h;
-        const scale = Math.min(cw / w, ch / h, 1);
+        /* Fill as much of the pane as possible, preserving aspect ratio
+         * (upscaling allowed — the remote resolution is often smaller). */
+        const scale = Math.min(cw / w, ch / h);
         if (scale > 0) this.display.scale(scale);
     }
 

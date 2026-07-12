@@ -24,8 +24,16 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 [kin-theme="kin-dark"] .btn-remove:hover { background: #422; }
 
 /* --- Sessions tab: left session list + right live viewer --- */
-#sessions-pane { width: 220px; flex: 0 0 220px; min-width: 180px; }
-#viewer-pane { min-width: 0; }
+/* Make the whole app fill the window so the viewer can take the rest. */
+#host > * { height: 100%; }
+#sessions-layout { align-items: stretch; height: 100%; }
+
+/* Left: fixed-width vertical list of sessions. */
+#sessions-pane { width: 220px; flex: 0 0 220px; min-width: 170px; }
+#sessions-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: calc(100vh - 170px); }
+
+/* Right: viewer fills the remaining space; toolbar sits at the bottom. */
+#viewer-pane { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
 
 .session-item {
     display: flex;
@@ -45,11 +53,12 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
 .session-kill { flex: 0 0 auto; line-height: 1; padding: 0 6px; }
 .session-empty { color: #888; font-size: 13px; padding: 6px 2px; }
 
-/* Live remote-desktop surface. */
+/* Live remote-desktop surface — fills as much of the window as possible. */
 #viewer-container {
     position: relative;
-    min-height: 360px;
-    height: 60vh;
+    flex: 1 1 auto;
+    height: calc(100vh - 150px);
+    min-height: 280px;
     background: #000;
     border: 1px solid #444;
     border-radius: 4px;
@@ -58,8 +67,9 @@ body { display: flex; flex-direction: column; min-height: 100%; background: tran
     align-items: center;
     justify-content: center;
 }
-#viewer-container:fullscreen { height: 100vh; border: 0; border-radius: 0; }
-.guac-display { margin: auto; }
+#viewer-container:fullscreen { height: 100vh; width: 100vw; border: 0; border-radius: 0; }
+#viewer-toolbar { flex: 0 0 auto; align-items: center; }
+.guac-display { margin: auto; line-height: 0; }
 .guac-display canvas { display: block; }
 
 [kin-theme="kin-dark"] .session-item {

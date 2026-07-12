@@ -167,18 +167,19 @@
                             "flex": 1,
                             "gap": "6px",
                             "children": [
+                              { "type": "Column", "id": "viewer-container" },
                               {
                                 "type": "Row",
+                                "id": "viewer-toolbar",
                                 "gap": "8px",
                                 "wrap": true,
                                 "children": [
                                   { "type": "Text", "id": "viewer-title", "text": "No session selected" },
                                   { "type": "Button", "id": "btn-viewer-fullscreen", "label": "Fullscreen" },
-                                  { "type": "Button", "id": "btn-viewer-disconnect", "label": "Disconnect" }
+                                  { "type": "Button", "id": "btn-viewer-disconnect", "label": "Disconnect" },
+                                  { "type": "Text", "id": "viewer-status", "text": "" }
                                 ]
-                              },
-                              { "type": "Column", "id": "viewer-container" },
-                              { "type": "Text", "id": "viewer-status", "text": "" }
+                              }
                             ]
                           }
                         ]
