@@ -40,10 +40,19 @@ export class GuacViewer {
         el.classList.add('guac-display');
         this.container.appendChild(el);
 
+        /* Re-fit whenever the remote resolution becomes known / changes — this is
+         * when the display element actually gets a size, so scaling at "connected"
+         * alone is too early. */
+        display.onresize = (w, h) => {
+            console.log('[guac] display resize', w, h);
+            this._fit();
+        };
+
         client.onstatechange = (state) => {
             // 0 IDLE, 1 CONNECTING, 2 WAITING, 3 CONNECTED, 4 DISCONNECTING, 5 DISCONNECTED
             const names = ['idle', 'connecting', 'waiting', 'connected',
                            'disconnecting', 'disconnected'];
+            console.log('[guac] state', state, names[state]);
             if (state === 3) {
                 this._connected = true;
                 this.onStatus('connected');
@@ -54,6 +63,7 @@ export class GuacViewer {
         };
 
         client.onerror = (status) => {
+            console.error('[guac] client error', status);
             this._connected = false;
             this.onStatus('error: ' + (status && status.message ? status.message : 'connection failed'));
             this.disconnect();
@@ -91,6 +101,7 @@ export class GuacViewer {
         /* Fill as much of the pane as possible, preserving aspect ratio
          * (upscaling allowed — the remote resolution is often smaller). */
         const scale = Math.min(cw / w, ch / h);
+        console.log('[guac] fit: remote', w + 'x' + h, 'container', cw + 'x' + ch, 'scale', scale);
         if (scale > 0) this.display.scale(scale);
     }
 
