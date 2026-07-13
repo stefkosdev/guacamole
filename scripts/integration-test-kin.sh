@@ -62,7 +62,7 @@ if [ -z "$KIN_SESSION" ]; then
     note "         polykernel checks auth before routing, so they cannot assert routing.)"
 else
     marker="itest-$$"
-    add_body="{\"action\":\"add\",\"name\":\"$marker\",\"protocol\":\"vnc\",\"hostname\":\"127.0.0.1\",\"port\":5999}"
+    add_body="{\"action\":\"add\",\"name\":\"$marker\",\"protocol\":\"rdp\",\"hostname\":\"127.0.0.1\",\"port\":3389,\"remote_app\":\"notepad\"}"
 
     add_resp="$(api POST /api/guacamole/connections "$add_body")"
     if printf '%s' "$add_resp" | grep -q '"response":"success"'; then
@@ -78,6 +78,13 @@ else
         ok "list shows the added connection (routing + sessionid-strip + IPC pump)"
     else
         bad "list did not contain $marker: $list_resp"
+    fi
+
+    # RemoteApp (single-application) field round-trips through the HTTP path.
+    if printf '%s' "$list_resp" | grep -q '"remote_app":"notepad"'; then
+        ok "remote_app (RDP single-application) round-trips"
+    else
+        bad "remote_app not present in list"
     fi
 
     cid="$(printf '%s' "$add_resp" | sed -n 's/.*"connection_id":"\([^"]*\)".*/\1/p')"

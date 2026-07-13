@@ -27,6 +27,11 @@ test-unit:
 integration:
 	./scripts/integration-test-kin.sh
 
+# Live viewer/video path (WS tunnel -> guacamole.service -> Docker VNC).
+# Needs a running Kin, docker, and KIN_SESSION=<kin_session cookie>.
+tunnel-test:
+	./scripts/tunnel-test-kin.sh
+
 # Full end-to-end test: a persisted connection drives a real VNC session
 # (service under a minimal Kin manager stub; needs Docker + a built service).
 e2e:
@@ -43,4 +48,4 @@ clean:
 	$(MAKE) -C $(SERVICE_DIR) clean
 	$(MAKE) -C $(SERVICE_DIR)/tests clean
 
-.PHONY: all service build-apps deb test test-unit integration e2e vnc-up vnc-down clean
+.PHONY: all service build-apps deb test test-unit integration tunnel-test e2e vnc-up vnc-down clean
