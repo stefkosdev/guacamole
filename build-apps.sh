@@ -79,6 +79,31 @@ install_to_kin() {
         echo "WARNING: guacamole.service build failed; binary not deployed." >&2
     fi
 
+    # Install and build the KinDOS `guacamole` command. Like the service, a
+    # source-only copy is not enough — the shell runs the compiled binary from
+    # build/commands/, so it must be built (against the Kin library) and deployed
+    # there. We build the local copy (its Makefile uses the repo-root libraries/
+    # symlinks set up above) and install the binary into both the Kin source
+    # tree (commands/) and the runtime location (build/commands/).
+    KIN_CMD_SRC="$KIN_SOURCE_PATH/commands/guacamole.cmd"
+    echo "Installing guacamole command to Kin source: $KIN_CMD_SRC"
+    mkdir -p "$KIN_CMD_SRC"
+    rsync -av --delete --exclude '*.o' --exclude 'guacamole' \
+        "$SCRIPT_DIR/command/guacamole.cmd/" "$KIN_CMD_SRC/"
+    echo "Building guacamole command binary..."
+    if make -C "$SCRIPT_DIR/command/guacamole.cmd"; then
+        for dest in "$KIN_SOURCE_PATH/commands/guacamole" \
+                    "$KIN_CMD_SRC/guacamole" \
+                    "$KIN_BUILD_PATH/commands/guacamole"; do
+            mkdir -p "$(dirname "$dest")"
+            rm -f "$dest"   # a running copy may hold the file open (Text file busy)
+            cp "$SCRIPT_DIR/command/guacamole.cmd/guacamole" "$dest"
+        done
+        echo "Deployed guacamole command to $KIN_BUILD_PATH/commands/"
+    else
+        echo "WARNING: guacamole command build failed; binary not deployed." >&2
+    fi
+
     echo "Syncing repository/ to build/repository/..."
     rsync -av --delete "$KIN_SOURCE_PATH/repository/" "$KIN_BUILD_PATH/repository/"
 

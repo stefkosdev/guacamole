@@ -6,6 +6,10 @@ Guacamole provides remote desktop access to machines running VNC, RDP,
 SSH, Telnet, and Kubernetes. It integrates with Kin OS as a system service
 and provides an admin web app for managing connections.
 
+There are two ways to manage connections: the **admin web app** (below) and the
+**`guacamole` KinDOS command** (see [Command-line interface](#command-line-interface-kindos)).
+Both talk to the same service over the same API, so they are fully interchangeable.
+
 ## Admin Web App
 
 The `kin_guacamole_admin` app is available in the Administration category
@@ -87,6 +91,73 @@ Clients send a Guacamole protocol `select` instruction:
 - `select <protocol>` — e.g. `select vnc` to connect directly
 - `select $<connection_id>` — e.g. `select $a1b2c3d4...` to use a stored
   connection (connection ID from the admin web app)
+
+## Command-line interface (KinDOS)
+
+The `guacamole` command does everything the admin app's Connections and Sessions
+tabs do, from the KinDOS shell (or over SSH / the web terminal). It talks to
+`guacamole.service` over the same IPC the web app uses and prints the service's
+JSON response, so it scripts cleanly.
+
+```
+guacamole op=<operation> [field=value ...]
+```
+
+### Operations
+
+| Operation | Arguments | Does |
+|-----------|-----------|------|
+| `list` | — | list all stored connections |
+| `get` | `id=<id>` | show one connection (incl. stored password) |
+| `add` | connection fields | create a connection; returns its `connection_id` |
+| `update` | `id=<id>` + fields | change text fields and port of a connection |
+| `delete` | `id=<id>` | remove a connection |
+| `reload` | — | re-read connections from disk |
+| `sessions` | — | list active sessions |
+| `protocols` | — | list supported protocols |
+| `connect` | `id=<id>` | start a session for a stored connection |
+| `disconnect` | `id=<id>` | end an active session |
+
+### Connection fields (for `add` / `update`)
+
+`name` `protocol` `hostname` `port` `username` `password` `private_key`
+`domain` `security` `color_depth` `remote_app` `remote_app_dir` `remote_app_args`
+`width` `height` `dpi` — and the boolean feature flags `enable_audio`
+`enable_video` `enable_printing` `enable_file_transfer` `enable_wallpaper`
+`enable_theming` `enable_font_smoothing` `enable_full_window_drag`
+`enable_menu_animation` `disable_copy` `disable_paste`.
+
+Booleans accept `1`/`true`/`yes`/`on`. Only the fields you pass are sent; the rest
+take service defaults on `add`, or stay unchanged on `update`.
+
+> `update` changes the text fields and the port (this matches the service, and so
+> the web app's Edit). To change a feature flag or the display size, delete the
+> connection and `add` it again with the new values.
+
+### Examples
+
+```bash
+# Create a VNC connection and capture its id
+guacamole op=add name=Office protocol=vnc hostname=10.0.0.5 port=5900 password=secret
+
+# List, inspect, retarget, and remove it
+guacamole op=list
+guacamole op=get id=7d3ad049421b50ac38235a44b1f7cfe7
+guacamole op=update id=7d3ad049421b50ac38235a44b1f7cfe7 hostname=10.0.0.6
+guacamole op=delete id=7d3ad049421b50ac38235a44b1f7cfe7
+
+# An RDP RemoteApp (single published application)
+guacamole op=add name=Calc protocol=rdp hostname=win.example.com port=3389 \
+    username=alice password=secret remote_app=calc
+
+# Sessions and protocols
+guacamole op=sessions
+guacamole op=protocols
+```
+
+Run `guacamole --help` for the full argument list. Inside Kin the shell passes
+`manager_pid` for you; when running the binary standalone, pass `manager_pid=<pid>`
+or set `KIN_MANAGER_PID`.
 
 ## Building
 
