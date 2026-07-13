@@ -222,6 +222,7 @@ static size_t serialize_connection(const GuacConnection* c, char* buf, size_t ca
 {
     char name_esc[512], host_esc[512], user_esc[512], pass_esc[512];
     char pk_esc[2100], dom_esc[512], sec_esc[128], cd_esc[32];
+    char rapp_esc[512], rdir_esc[1024], rargs_esc[1024];
     json_escape(c->name, name_esc, sizeof(name_esc));
     json_escape(c->hostname, host_esc, sizeof(host_esc));
     json_escape(c->username, user_esc, sizeof(user_esc));
@@ -230,10 +231,14 @@ static size_t serialize_connection(const GuacConnection* c, char* buf, size_t ca
     json_escape(c->domain, dom_esc, sizeof(dom_esc));
     json_escape(c->security, sec_esc, sizeof(sec_esc));
     json_escape(c->color_depth, cd_esc, sizeof(cd_esc));
+    json_escape(c->remote_app, rapp_esc, sizeof(rapp_esc));
+    json_escape(c->remote_app_dir, rdir_esc, sizeof(rdir_esc));
+    json_escape(c->remote_app_args, rargs_esc, sizeof(rargs_esc));
     int n = snprintf(buf, cap,
         "{\"id\":\"%s\",\"name\":\"%s\",\"protocol\":\"%s\",\"hostname\":\"%s\","
         "\"port\":%d,\"username\":\"%s\",\"password\":\"%s\",\"private_key\":\"%s\","
         "\"domain\":\"%s\",\"security\":\"%s\",\"color_depth\":\"%s\","
+        "\"remote_app\":\"%s\",\"remote_app_dir\":\"%s\",\"remote_app_args\":\"%s\","
         "\"enable_audio\":%s,\"enable_video\":%s,\"enable_printing\":%s,"
         "\"enable_file_transfer\":%s,\"enable_wallpaper\":%s,\"enable_theming\":%s,"
         "\"enable_font_smoothing\":%s,\"enable_full_window_drag\":%s,"
@@ -242,6 +247,7 @@ static size_t serialize_connection(const GuacConnection* c, char* buf, size_t ca
         c->id, name_esc, c->protocol, host_esc,
         c->port, user_esc, pass_esc, pk_esc,
         dom_esc, sec_esc, cd_esc,
+        rapp_esc, rdir_esc, rargs_esc,
         c->enable_audio ? "true" : "false",
         c->enable_video ? "true" : "false",
         c->enable_printing ? "true" : "false",
@@ -382,6 +388,9 @@ static void load_connections(void)
         json_field_str(obj, "security", c->security, sizeof(c->security));
         json_field_str(obj, "color_depth", c->color_depth, sizeof(c->color_depth));
         if (!c->color_depth[0]) snprintf(c->color_depth, sizeof(c->color_depth), "32");
+        json_field_str(obj, "remote_app", c->remote_app, sizeof(c->remote_app));
+        json_field_str(obj, "remote_app_dir", c->remote_app_dir, sizeof(c->remote_app_dir));
+        json_field_str(obj, "remote_app_args", c->remote_app_args, sizeof(c->remote_app_args));
         c->enable_audio = json_field_bool(obj, "enable_audio");
         c->enable_video = json_field_bool(obj, "enable_video");
         c->enable_printing = json_field_bool(obj, "enable_printing");
@@ -422,16 +431,22 @@ static char* handle_list_connections(void)
         if (!first) pos += snprintf(buf + pos, 65536 - pos, ",");
         first = 0;
         char name_esc[512], host_esc[512], user_esc[512], dom_esc[512], sec_esc[512], cd_esc[64];
+        char rapp_esc[512], rdir_esc[1024], rargs_esc[1024];
         json_escape(g_connections[i].name, name_esc, sizeof(name_esc));
         json_escape(g_connections[i].hostname, host_esc, sizeof(host_esc));
         json_escape(g_connections[i].username, user_esc, sizeof(user_esc));
         json_escape(g_connections[i].domain, dom_esc, sizeof(dom_esc));
         json_escape(g_connections[i].security, sec_esc, sizeof(sec_esc));
         json_escape(g_connections[i].color_depth, cd_esc, sizeof(cd_esc));
+        json_escape(g_connections[i].remote_app, rapp_esc, sizeof(rapp_esc));
+        json_escape(g_connections[i].remote_app_dir, rdir_esc, sizeof(rdir_esc));
+        json_escape(g_connections[i].remote_app_args, rargs_esc, sizeof(rargs_esc));
         pos += snprintf(buf + pos, 65536 - pos,
             "{\"id\":\"%s\",\"name\":\"%s\",\"protocol\":\"%s\",\"hostname\":\"%s\","
             "\"port\":%d,\"username\":\"%s\",\"domain\":\"%s\",\"security\":\"%s\","
-            "\"color_depth\":\"%s\",\"enable_audio\":%s,\"enable_video\":%s,"
+            "\"color_depth\":\"%s\","
+            "\"remote_app\":\"%s\",\"remote_app_dir\":\"%s\",\"remote_app_args\":\"%s\","
+            "\"enable_audio\":%s,\"enable_video\":%s,"
             "\"enable_printing\":%s,\"enable_file_transfer\":%s,"
             "\"enable_wallpaper\":%s,\"enable_theming\":%s,"
             "\"enable_font_smoothing\":%s,\"enable_full_window_drag\":%s,"
@@ -441,6 +456,7 @@ static char* handle_list_connections(void)
             g_connections[i].id, name_esc, g_connections[i].protocol, host_esc,
             g_connections[i].port, user_esc, dom_esc, sec_esc,
             cd_esc,
+            rapp_esc, rdir_esc, rargs_esc,
             g_connections[i].enable_audio ? "true" : "false",
             g_connections[i].enable_video ? "true" : "false",
             g_connections[i].enable_printing ? "true" : "false",
@@ -469,9 +485,10 @@ static char* handle_get_connection(const char* id)
     {
         if (strcmp(g_connections[i].id, id) == 0)
         {
-            char buf[4096];
+            char buf[8192];
             char name_esc[512], host_esc[512], user_esc[512], pass_esc[512];
             char pk_esc[1024], dom_esc[512], sec_esc[512], cd_esc[64];
+            char rapp_esc[512], rdir_esc[1024], rargs_esc[1024];
             json_escape(g_connections[i].name, name_esc, sizeof(name_esc));
             json_escape(g_connections[i].hostname, host_esc, sizeof(host_esc));
             json_escape(g_connections[i].username, user_esc, sizeof(user_esc));
@@ -480,11 +497,15 @@ static char* handle_get_connection(const char* id)
             json_escape(g_connections[i].domain, dom_esc, sizeof(dom_esc));
             json_escape(g_connections[i].security, sec_esc, sizeof(sec_esc));
             json_escape(g_connections[i].color_depth, cd_esc, sizeof(cd_esc));
+            json_escape(g_connections[i].remote_app, rapp_esc, sizeof(rapp_esc));
+            json_escape(g_connections[i].remote_app_dir, rdir_esc, sizeof(rdir_esc));
+            json_escape(g_connections[i].remote_app_args, rargs_esc, sizeof(rargs_esc));
             snprintf(buf, sizeof(buf),
                 "{\"response\":\"success\",\"connection\":{\"id\":\"%s\",\"name\":\"%s\","
                 "\"protocol\":\"%s\",\"hostname\":\"%s\",\"port\":%d,\"username\":\"%s\","
                 "\"password\":\"%s\",\"private_key\":\"%s\",\"domain\":\"%s\","
                 "\"security\":\"%s\",\"color_depth\":\"%s\","
+                "\"remote_app\":\"%s\",\"remote_app_dir\":\"%s\",\"remote_app_args\":\"%s\","
                 "\"enable_audio\":%s,\"enable_video\":%s,\"enable_printing\":%s,"
                 "\"enable_file_transfer\":%s,\"enable_wallpaper\":%s,\"enable_theming\":%s,"
                 "\"enable_font_smoothing\":%s,\"enable_full_window_drag\":%s,"
@@ -496,6 +517,7 @@ static char* handle_get_connection(const char* id)
                 g_connections[i].port, user_esc,
                 pass_esc, pk_esc, dom_esc,
                 sec_esc, cd_esc,
+                rapp_esc, rdir_esc, rargs_esc,
                 g_connections[i].enable_audio ? "true" : "false",
                 g_connections[i].enable_video ? "true" : "false",
                 g_connections[i].enable_printing ? "true" : "false",
@@ -524,6 +546,7 @@ static char* handle_add_connection(const char* message)
     char name[256] = "", protocol[32] = "", hostname[256] = "";
     char username[128] = "", password[256] = "", private_key[1024] = "";
     char domain[128] = "", security[32] = "", color_depth[8] = "32";
+    char remote_app[256] = "", remote_app_dir[512] = "", remote_app_args[512] = "";
     int port = 0;
 
     json_field_str(message, "name", name, sizeof(name));
@@ -535,6 +558,9 @@ static char* handle_add_connection(const char* message)
     json_field_str(message, "domain", domain, sizeof(domain));
     json_field_str(message, "security", security, sizeof(security));
     json_field_str(message, "color_depth", color_depth, sizeof(color_depth));
+    json_field_str(message, "remote_app", remote_app, sizeof(remote_app));
+    json_field_str(message, "remote_app_dir", remote_app_dir, sizeof(remote_app_dir));
+    json_field_str(message, "remote_app_args", remote_app_args, sizeof(remote_app_args));
     port = json_field_int(message, "port");
 
     if (!name[0] || !protocol[0] || !hostname[0])
@@ -571,6 +597,9 @@ static char* handle_add_connection(const char* message)
     snprintf(c->domain, sizeof(c->domain), "%s", domain);
     snprintf(c->security, sizeof(c->security), "%s", security);
     snprintf(c->color_depth, sizeof(c->color_depth), "%s", color_depth);
+    snprintf(c->remote_app, sizeof(c->remote_app), "%s", remote_app);
+    snprintf(c->remote_app_dir, sizeof(c->remote_app_dir), "%s", remote_app_dir);
+    snprintf(c->remote_app_args, sizeof(c->remote_app_args), "%s", remote_app_args);
     c->enable_audio = json_field_bool(message, "enable_audio");
     c->enable_video = json_field_bool(message, "enable_video");
     c->enable_printing = json_field_bool(message, "enable_printing");
@@ -637,6 +666,15 @@ static char* handle_update_connection(const char* message)
                 snprintf(g_connections[i].security, sizeof(g_connections[i].security), "%s", val);
             if (json_field_str(message, "color_depth", val, sizeof(val)) == 0)
                 snprintf(g_connections[i].color_depth, sizeof(g_connections[i].color_depth), "%s", val);
+            {
+                char rbuf[512];
+                if (json_field_str(message, "remote_app", rbuf, sizeof(rbuf)) == 0)
+                    snprintf(g_connections[i].remote_app, sizeof(g_connections[i].remote_app), "%s", rbuf);
+                if (json_field_str(message, "remote_app_dir", rbuf, sizeof(rbuf)) == 0)
+                    snprintf(g_connections[i].remote_app_dir, sizeof(g_connections[i].remote_app_dir), "%s", rbuf);
+                if (json_field_str(message, "remote_app_args", rbuf, sizeof(rbuf)) == 0)
+                    snprintf(g_connections[i].remote_app_args, sizeof(g_connections[i].remote_app_args), "%s", rbuf);
+            }
 
             pthread_mutex_unlock(&g_connections_lock);
             persist_connections();

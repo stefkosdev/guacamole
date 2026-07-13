@@ -89,6 +89,37 @@ function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function currentPackageId() {
+    try { return new URLSearchParams(location.search).get('kin_repo_package') || 'kin_guacamole_admin'; }
+    catch (_e) { return 'kin_guacamole_admin'; }
+}
+
+/* Open a connection in its own Kin window (standalone viewer). */
+function openConnectionWindow(c) {
+    if (!c || !c.id) return;
+    const opts = {
+        packageId: currentPackageId(),
+        entry: 'viewer.js',
+        title: 'Guacamole — ' + (c.name || c.hostname || 'connection'),
+        width: 1100,
+        height: 780,
+        quitOnClose: false,
+        assets: [
+            { type: 'css', href: '../kin_ui/theme/kin-ui.css' },
+            { type: 'css', href: 'guacamole-view.css' },
+            { type: 'css', href: 'viewer.css' }
+        ]
+    };
+    const query = { connid: c.id, name: c.name || '' };
+    if (window.kin && kin.classes && kin.classes.Window) {
+        new kin.classes.Window(Object.assign({}, opts, { module: true, query }));
+    } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+            Object.assign({ kinRepositoryOpenWindow: true, moduleEntry: true, extraQuery: query }, opts),
+            location.origin);
+    }
+}
+
 function rebuildConnList(ui) {
     const table = ui.getById('conn-table');
     if (!table) return;
@@ -107,10 +138,12 @@ function rebuildConnList(ui) {
             '<td>' +
             '<button type="button" class="btn-sm" data-edit="' + i + '">Edit</button> ' +
             '<button type="button" class="btn-sm" data-connect="' + i + '">Connect</button> ' +
+            '<button type="button" class="btn-sm" data-window="' + i + '">Open in window</button> ' +
             '<button type="button" class="btn-sm btn-remove" data-remove="' + i + '">Remove</button>' +
             '</td>';
         tr.querySelector('[data-edit]').addEventListener('click', () => openEdit(ui, i));
         tr.querySelector('[data-connect]').addEventListener('click', () => connectSession(ui, i));
+        tr.querySelector('[data-window]').addEventListener('click', () => openConnectionWindow(connections[i]));
         tr.querySelector('[data-remove]').addEventListener('click', () => removeConnection(ui, i));
         tbody.appendChild(tr);
     }
@@ -247,6 +280,9 @@ async function loadConnections(ui) {
         domain: c.domain || '',
         security: c.security || 'any',
         color_depth: c.color_depth || '32',
+        remote_app: c.remote_app || '',
+        remote_app_dir: c.remote_app_dir || '',
+        remote_app_args: c.remote_app_args || '',
         enable_audio: !!c.enable_audio,
         enable_video: !!c.enable_video,
         enable_printing: !!c.enable_printing,
@@ -296,6 +332,9 @@ function openAdd(ui) {
     setInputValue(ui.getById('edit-width'), '1024');
     setInputValue(ui.getById('edit-height'), '768');
     setInputValue(ui.getById('edit-dpi'), '96');
+    setInputValue(ui.getById('edit-remote-app'), '');
+    setInputValue(ui.getById('edit-remote-app-args'), '');
+    setInputValue(ui.getById('edit-remote-app-dir'), '');
     setSwitchChecked(ui.getById('edit-enable-audio'), false);
     setSwitchChecked(ui.getById('edit-enable-video'), false);
     setSwitchChecked(ui.getById('edit-enable-printing'), false);
@@ -323,6 +362,9 @@ function openEdit(ui, idx) {
     setInputValue(ui.getById('edit-width'), String(c.width || 1024));
     setInputValue(ui.getById('edit-height'), String(c.height || 768));
     setInputValue(ui.getById('edit-dpi'), String(c.dpi || 96));
+    setInputValue(ui.getById('edit-remote-app'), c.remote_app || '');
+    setInputValue(ui.getById('edit-remote-app-args'), c.remote_app_args || '');
+    setInputValue(ui.getById('edit-remote-app-dir'), c.remote_app_dir || '');
     setSwitchChecked(ui.getById('edit-enable-audio'), c.enable_audio);
     setSwitchChecked(ui.getById('edit-enable-video'), c.enable_video);
     setSwitchChecked(ui.getById('edit-enable-printing'), c.enable_printing);
@@ -352,6 +394,9 @@ function getConnectionFromForm(ui) {
     const width = parseInt(inputValue(ui.getById('edit-width')) || '1024', 10);
     const height = parseInt(inputValue(ui.getById('edit-height')) || '768', 10);
     const dpi = parseInt(inputValue(ui.getById('edit-dpi')) || '96', 10);
+    const remote_app = inputValue(ui.getById('edit-remote-app')).trim();
+    const remote_app_args = inputValue(ui.getById('edit-remote-app-args')).trim();
+    const remote_app_dir = inputValue(ui.getById('edit-remote-app-dir')).trim();
 
     if (!name || !hostname) {
         setStatus(ui, 'conn-status', 'Name and hostname are required.');
@@ -377,6 +422,9 @@ function getConnectionFromForm(ui) {
         width: width,
         height: height,
         dpi: dpi,
+        remote_app: remote_app || undefined,
+        remote_app_args: remote_app_args || undefined,
+        remote_app_dir: remote_app_dir || undefined,
         enable_audio: switchChecked(ui.getById('edit-enable-audio')),
         enable_video: switchChecked(ui.getById('edit-enable-video')),
         enable_printing: switchChecked(ui.getById('edit-enable-printing')),

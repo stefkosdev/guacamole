@@ -156,6 +156,12 @@ static int stored_conn_join_handler(guac_user* user, int argc, char** argv)
         return orig(user, argc, argv);   /* fall back rather than fail */
 
     char portb[16], wb[16], hb[16], db[16];
+    char rappb[300];
+    /* RDP RemoteApp aliases must be prefixed with "||" for guacd. */
+    if (c->remote_app[0] && strncmp(c->remote_app, "||", 2) != 0)
+        snprintf(rappb, sizeof(rappb), "||%s", c->remote_app);
+    else
+        snprintf(rappb, sizeof(rappb), "%s", c->remote_app);
     snprintf(portb, sizeof(portb), "%d", c->port);
     snprintf(wb, sizeof(wb), "%d", c->width);
     snprintf(hb, sizeof(hb), "%d", c->height);
@@ -174,6 +180,9 @@ static int stored_conn_join_handler(guac_user* user, int argc, char** argv)
         else if (!strcmp(n, "private-key"))             v = c->private_key;
         else if (!strcmp(n, "security"))                v = c->security;
         else if (!strcmp(n, "color-depth"))             v = c->color_depth[0] ? c->color_depth : argv[i];
+        else if (!strcmp(n, "remote-app"))              v = rappb[0] ? rappb : argv[i];
+        else if (!strcmp(n, "remote-app-dir"))          v = c->remote_app_dir[0] ? c->remote_app_dir : argv[i];
+        else if (!strcmp(n, "remote-app-args"))         v = c->remote_app_args[0] ? c->remote_app_args : argv[i];
         else if (!strcmp(n, "width"))                   v = c->width > 0 ? wb : argv[i];
         else if (!strcmp(n, "height"))                  v = c->height > 0 ? hb : argv[i];
         else if (!strcmp(n, "dpi"))                     v = c->dpi > 0 ? db : argv[i];

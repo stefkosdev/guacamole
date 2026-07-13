@@ -347,6 +347,34 @@ static void test_skip_incomplete_objects(void)
     free(list);
 }
 
+static void test_remote_app(void)
+{
+    g_current = "remote_app";
+    reset_store();
+    char* a = call("connections",
+        "{\"action\":\"add\",\"name\":\"App\",\"protocol\":\"rdp\",\"hostname\":\"h\","
+        "\"remote_app\":\"notepad\",\"remote_app_args\":\"/x\",\"remote_app_dir\":\"C:\"}");
+    char id[64]; extract_id(a, id, sizeof(id)); free(a);
+
+    char body[128];
+    snprintf(body, sizeof(body), "{\"action\":\"get\",\"id\":\"%s\"}", id);
+    char* g = call("connections", body);
+    CHECK(CONTAINS(g, "\"remote_app\":\"notepad\""), "remote_app stored");
+    CHECK(CONTAINS(g, "\"remote_app_args\":\"/x\""), "remote_app_args stored");
+    CHECK(CONTAINS(g, "\"remote_app_dir\":\"C:\""), "remote_app_dir stored");
+    free(g);
+
+    char* list = call("connections", NULL);
+    CHECK(CONTAINS(list, "\"remote_app\":\"notepad\""), "remote_app in list");
+    free(list);
+
+    /* Survives a restart (persisted to .info). */
+    guac_mgmt_init();
+    char* g2 = call("connections", body);
+    CHECK(CONTAINS(g2, "\"remote_app\":\"notepad\""), "remote_app survives restart");
+    free(g2);
+}
+
 static void test_connect_reachable(void)
 {
     g_current = "connect_reachable";
@@ -454,6 +482,7 @@ int main(void)
     test_settings_report_storage();
     test_corrupt_file_tolerated();
     test_skip_incomplete_objects();
+    test_remote_app();
     test_connect_reachable();
     test_connect_unreachable_fails();
     test_connect_bad_hostname_fails();

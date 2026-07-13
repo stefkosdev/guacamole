@@ -21,6 +21,9 @@ typedef struct {
     char domain[128];
     char security[32];
     char color_depth[8];
+    char remote_app[256];        /* RDP RemoteApp: launch a single application (e.g. ||notepad) */
+    char remote_app_dir[512];
+    char remote_app_args[512];
     int enable_audio;
     int enable_video;
     int enable_printing;

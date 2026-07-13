@@ -1,0 +1,32 @@
+html, body { height: 100%; margin: 0; background: #000; }
+
+.vw-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+.vw-canvas {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    background: #000;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.vw-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: #1a1a1a;
+    color: #ddd;
+    font-size: 13px;
+}
+.vw-title { font-weight: 600; }
+.vw-status { margin-left: auto; color: #aaa; }
+
+.guac-display { margin: auto; line-height: 0; }
+.guac-display canvas { display: block; }

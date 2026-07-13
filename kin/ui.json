@@ -123,6 +123,28 @@
                                 ]
                               },
                               {
+                                "type": "Frame",
+                                "title": "Single application (RDP RemoteApp)",
+                                "children": [
+                                  {
+                                    "type": "Column",
+                                    "gap": "6px",
+                                    "children": [
+                                      { "type": "Input", "id": "edit-remote-app", "placeholder": "Remote app — launches only this app, e.g. ||notepad", "aria-label": "Remote app" },
+                                      {
+                                        "type": "Row",
+                                        "gap": "8px",
+                                        "wrap": true,
+                                        "children": [
+                                          { "type": "Input", "id": "edit-remote-app-args", "placeholder": "Arguments (optional)", "aria-label": "Remote app arguments", "flex": 1 },
+                                          { "type": "Input", "id": "edit-remote-app-dir", "placeholder": "Working directory (optional)", "aria-label": "Remote app directory", "flex": 1 }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
                                 "type": "Row",
                                 "gap": "8px",
                                 "wrap": true,
