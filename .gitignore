@@ -1,5 +1,7 @@
 install.ini
 .config.ini
+node_modules/
+scripts/browser/package-lock.json
 obj/
 tmp/
 config/

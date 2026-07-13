@@ -32,6 +32,17 @@ integration:
 tunnel-test:
 	./scripts/tunnel-test-kin.sh
 
+# Real in-browser render: headless Chromium drives the deployed guac-viewer.js
+# against the live tunnel and asserts the display paints.
+# Needs a running Kin, docker, chromium, node, and KIN_SESSION=<kin_session cookie>.
+# Run scripts/install-test-deps.sh once first.
+browser-test:
+	./scripts/browser-test-kin.sh
+
+# Install every test dependency (gcc/make, docker, chromium, node) + puppeteer-core.
+install-deps:
+	./scripts/install-test-deps.sh
+
 # Full end-to-end test: a persisted connection drives a real VNC session
 # (service under a minimal Kin manager stub; needs Docker + a built service).
 e2e:
@@ -48,4 +59,4 @@ clean:
 	$(MAKE) -C $(SERVICE_DIR) clean
 	$(MAKE) -C $(SERVICE_DIR)/tests clean
 
-.PHONY: all service build-apps deb test test-unit integration tunnel-test e2e vnc-up vnc-down clean
+.PHONY: all service build-apps deb test test-unit integration tunnel-test browser-test install-deps e2e vnc-up vnc-down clean

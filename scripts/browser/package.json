@@ -1,0 +1,10 @@
+{
+  "name": "kin-guacamole-browser-test",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless-Chromium driver that renders the deployed guac-viewer.js against the live Kin tunnel.",
+  "dependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
+}
