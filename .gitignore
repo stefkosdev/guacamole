@@ -1,4 +1,5 @@
 install.ini
+.config.ini
 obj/
 tmp/
 config/

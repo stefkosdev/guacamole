@@ -53,6 +53,25 @@ else
     SOCK="/tmp/kin-guacamole-$(id -u).sock"
 fi
 
+# If a Kin instance is already running it owns the guacamole socket; this
+# isolated e2e (its own manager stub + service) would conflict on it. Detect that
+# and skip cleanly. This check must run BEFORE the cleanup trap is installed —
+# cleanup removes $SOCK, which would be Kin's live socket. (Use 'make integration'
+# / 'make tunnel-test' to test against a running Kin instead.)
+kin_is_running() {
+    if command -v ss >/dev/null 2>&1 && ss -tln 2>/dev/null | grep -q ':9119'; then return 0; fi
+    if pgrep -f 'build/manager/kin-manager' >/dev/null 2>&1; then return 0; fi
+    return 1
+}
+if kin_is_running; then
+    echo "SKIP: Kin appears to be running (http.service :9119 / kin-manager)."
+    echo "      The isolated e2e would conflict on the guacamole socket, so it is"
+    echo "      not started. Stop Kin first to run it, or use 'make integration' /"
+    echo "      'make tunnel-test' which run against the live Kin."
+    rm -rf "$WORK" 2>/dev/null || true
+    exit 0
+fi
+
 cleanup() {
     [ -n "$SVC_PID" ] && kill "$SVC_PID" 2>/dev/null
     [ -n "$STUB_PID" ] && kill "$STUB_PID" 2>/dev/null
