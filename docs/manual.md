@@ -75,6 +75,7 @@ survive a service restart or a reboot.
 | Domain | Windows domain (RDP only) |
 | Security | RDP security: any/nla/tls/rdp |
 | Color Depth | Bits per pixel: 8/16/24/32 |
+| Ignore Cert | RDP: accept the server's untrusted/self-signed TLS certificate (needed for most standalone Windows hosts) |
 | Width/Height | Display resolution (default: 1024x768) |
 | DPI | Dots per inch (default: 96) |
 | Features | Audio, video, printing, file transfer, etc. |
@@ -125,7 +126,12 @@ guacamole op=<operation> [field=value ...]
 `width` `height` `dpi` — and the boolean feature flags `enable_audio`
 `enable_video` `enable_printing` `enable_file_transfer` `enable_wallpaper`
 `enable_theming` `enable_font_smoothing` `enable_full_window_drag`
-`enable_menu_animation` `disable_copy` `disable_paste`.
+`enable_menu_animation` `disable_copy` `disable_paste` `ignore_cert`.
+
+> **RDP to a self-signed host** (a standalone Windows box): set `ignore_cert=true`,
+> otherwise guacd rejects the connection with *"SSL/TLS connection failed
+> (untrusted/self-signed certificate?)"*. Leave `security=any` so guacd negotiates
+> NLA/TLS as the server requires.
 
 Booleans accept `1`/`true`/`yes`/`on`. Only the fields you pass are sent; the rest
 take service defaults on `add`, or stay unchanged on `update`.
@@ -146,9 +152,13 @@ guacamole op=get id=7d3ad049421b50ac38235a44b1f7cfe7
 guacamole op=update id=7d3ad049421b50ac38235a44b1f7cfe7 hostname=10.0.0.6
 guacamole op=delete id=7d3ad049421b50ac38235a44b1f7cfe7
 
+# A Windows RDP host (self-signed cert -> ignore_cert=true)
+guacamole op=add name="Windows VM" protocol=rdp hostname=10.0.0.9 port=3389 \
+    username=alice password=secret security=any ignore_cert=true
+
 # An RDP RemoteApp (single published application)
 guacamole op=add name=Calc protocol=rdp hostname=win.example.com port=3389 \
-    username=alice password=secret remote_app=calc
+    username=alice password=secret ignore_cert=true remote_app=calc
 
 # Sessions and protocols
 guacamole op=sessions

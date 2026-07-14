@@ -180,6 +180,7 @@ static int stored_conn_join_handler(guac_user* user, int argc, char** argv)
         else if (!strcmp(n, "private-key"))             v = c->private_key;
         else if (!strcmp(n, "security"))                v = c->security;
         else if (!strcmp(n, "color-depth"))             v = c->color_depth[0] ? c->color_depth : argv[i];
+        else if (!strcmp(n, "ignore-cert"))             v = c->ignore_cert ? "true" : "false";
         else if (!strcmp(n, "remote-app"))              v = rappb[0] ? rappb : argv[i];
         else if (!strcmp(n, "remote-app-dir"))          v = c->remote_app_dir[0] ? c->remote_app_dir : argv[i];
         else if (!strcmp(n, "remote-app-args"))         v = c->remote_app_args[0] ? c->remote_app_args : argv[i];

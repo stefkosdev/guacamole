@@ -123,6 +123,7 @@ static const struct { const char* name; FieldType type; } FIELDS[] = {
     { "enable_menu_animation",   F_BOOL },
     { "disable_copy",            F_BOOL },
     { "disable_paste",           F_BOOL },
+    { "ignore_cert",             F_BOOL },
 };
 
 /* Build the "<command>|<json-body>" for an add/update from the named args that

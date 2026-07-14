@@ -35,6 +35,7 @@ typedef struct {
     int enable_menu_animation;
     int disable_copy;
     int disable_paste;
+    int ignore_cert;             /* RDP: accept untrusted/self-signed TLS certs */
     int width;
     int height;
     int dpi;

@@ -243,6 +243,7 @@ static size_t serialize_connection(const GuacConnection* c, char* buf, size_t ca
         "\"enable_file_transfer\":%s,\"enable_wallpaper\":%s,\"enable_theming\":%s,"
         "\"enable_font_smoothing\":%s,\"enable_full_window_drag\":%s,"
         "\"enable_menu_animation\":%s,\"disable_copy\":%s,\"disable_paste\":%s,"
+        "\"ignore_cert\":%s,"
         "\"width\":%d,\"height\":%d,\"dpi\":%d,\"created\":%ld,\"last_used\":%ld}",
         c->id, name_esc, c->protocol, host_esc,
         c->port, user_esc, pass_esc, pk_esc,
@@ -259,6 +260,7 @@ static size_t serialize_connection(const GuacConnection* c, char* buf, size_t ca
         c->enable_menu_animation ? "true" : "false",
         c->disable_copy ? "true" : "false",
         c->disable_paste ? "true" : "false",
+        c->ignore_cert ? "true" : "false",
         c->width, c->height, c->dpi, c->created, c->last_used);
     if (n < 0 || (size_t)n >= cap) return 0;
     return (size_t)n;
@@ -402,6 +404,7 @@ static void load_connections(void)
         c->enable_menu_animation = json_field_bool(obj, "enable_menu_animation");
         c->disable_copy = json_field_bool(obj, "disable_copy");
         c->disable_paste = json_field_bool(obj, "disable_paste");
+        c->ignore_cert = json_field_bool(obj, "ignore_cert");
         c->width = json_field_int(obj, "width");
         c->height = json_field_int(obj, "height");
         c->dpi = json_field_int(obj, "dpi");
@@ -451,6 +454,7 @@ static char* handle_list_connections(void)
             "\"enable_wallpaper\":%s,\"enable_theming\":%s,"
             "\"enable_font_smoothing\":%s,\"enable_full_window_drag\":%s,"
             "\"enable_menu_animation\":%s,\"disable_copy\":%s,\"disable_paste\":%s,"
+            "\"ignore_cert\":%s,"
             "\"width\":%d,\"height\":%d,\"dpi\":%d,\"active\":%s,"
             "\"created\":%ld,\"last_used\":%ld}",
             g_connections[i].id, name_esc, g_connections[i].protocol, host_esc,
@@ -468,6 +472,7 @@ static char* handle_list_connections(void)
             g_connections[i].enable_menu_animation ? "true" : "false",
             g_connections[i].disable_copy ? "true" : "false",
             g_connections[i].disable_paste ? "true" : "false",
+            g_connections[i].ignore_cert ? "true" : "false",
             g_connections[i].width, g_connections[i].height, g_connections[i].dpi,
             g_connections[i].active ? "true" : "false",
             g_connections[i].created, g_connections[i].last_used);
@@ -510,6 +515,7 @@ static char* handle_get_connection(const char* id)
                 "\"enable_file_transfer\":%s,\"enable_wallpaper\":%s,\"enable_theming\":%s,"
                 "\"enable_font_smoothing\":%s,\"enable_full_window_drag\":%s,"
                 "\"enable_menu_animation\":%s,\"disable_copy\":%s,\"disable_paste\":%s,"
+                "\"ignore_cert\":%s,"
                 "\"width\":%d,\"height\":%d,\"dpi\":%d,\"active\":%s,"
                 "\"created\":%ld,\"last_used\":%ld}}",
                 g_connections[i].id, name_esc,
@@ -529,6 +535,7 @@ static char* handle_get_connection(const char* id)
                 g_connections[i].enable_menu_animation ? "true" : "false",
                 g_connections[i].disable_copy ? "true" : "false",
                 g_connections[i].disable_paste ? "true" : "false",
+                g_connections[i].ignore_cert ? "true" : "false",
                 g_connections[i].width, g_connections[i].height, g_connections[i].dpi,
                 g_connections[i].active ? "true" : "false",
                 g_connections[i].created, g_connections[i].last_used);
@@ -611,6 +618,7 @@ static char* handle_add_connection(const char* message)
     c->enable_menu_animation = json_field_bool(message, "enable_menu_animation");
     c->disable_copy = json_field_bool(message, "disable_copy");
     c->disable_paste = json_field_bool(message, "disable_paste");
+    c->ignore_cert = json_field_bool(message, "ignore_cert");
     c->width = json_field_int(message, "width");
     c->height = json_field_int(message, "height");
     c->dpi = json_field_int(message, "dpi");
