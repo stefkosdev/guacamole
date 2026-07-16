@@ -1,28 +1,39 @@
 #!/usr/bin/env bash
 #
-# Install every system library needed to BUILD guacamole from source.
-#
-# `make` (the service build) fetches the Apache guacamole-server source and
-# compiles libguac plus the protocol plugins (VNC, RDP, SSH, Telnet, Kubernetes),
-# then statically links libguac into guacamole.service. That needs a toolchain,
-# the autotools, and a set of -dev libraries. This script installs all of them.
+# Get guacamole ready to build from source — in two parts:
+#   1. Install the system -dev libraries + toolchain (via the package manager).
+#   2. Fetch the Apache guacamole-server source and build libguac + the protocol
+#      plugins ourselves (we don't use a distro libguac — the service statically
+#      links our own libguac.a). This is the Makefile's guacamole-libguac-build
+#      target; it git-clones guacamole-server if missing and compiles it against
+#      the -dev libraries installed in step 1.
 #
 # It does NOT install kin.library — that is produced by the Kin build and wired
 # in by build-apps.sh (via the repo-root libraries/ symlinks).
 #
 # System packages are installed with your distro's package manager (needs sudo);
-# anything already present is skipped.
+# anything already present is skipped. Building libguac is a no-op once
+# dependencies/guacamole-server-install/lib/libguac.a exists.
 #
 # Usage:
-#   scripts/install-build-deps.sh          # install everything
-#   scripts/install-build-deps.sh --list   # just print the package list and exit
+#   scripts/install-build-deps.sh              # install packages + build libguac
+#   scripts/install-build-deps.sh --no-libguac # only install the system packages
+#   scripts/install-build-deps.sh --libguac    # only fetch + build libguac
+#   scripts/install-build-deps.sh --list       # just print the package list and exit
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 LIST_ONLY=0
+DO_PACKAGES=1
+DO_LIBGUAC=1
 for arg in "$@"; do
     case "$arg" in
-        --list) LIST_ONLY=1 ;;
-        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+        --list)       LIST_ONLY=1 ;;
+        --no-libguac) DO_LIBGUAC=0 ;;
+        --libguac)    DO_PACKAGES=0 ;;
+        -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -128,34 +139,50 @@ if [ "$LIST_ONLY" -eq 1 ]; then
     exit 0
 fi
 
-if [ -z "$PM" ]; then
-    echo "No supported package manager (apt/dnf/pacman) found." >&2
-    echo "Install these build dependencies manually, then run 'make':" >&2
-    echo "  gcc/g++, make, git, autoconf, automake, libtool, pkg-config," >&2
-    echo "  and -dev packages for: cairo, jpeg, png, uuid, webp, ssl, pango," >&2
-    echo "  libvncserver, freerdp2, libssh2, libtelnet, libwebsockets, pulse, vorbis" >&2
-    exit 1
+# --- 1. System packages ------------------------------------------------------
+if [ "$DO_PACKAGES" -eq 1 ]; then
+    if [ -z "$PM" ]; then
+        echo "No supported package manager (apt/dnf/pacman) found." >&2
+        echo "Install these build dependencies manually, then re-run with --libguac:" >&2
+        echo "  gcc/g++, make, git, autoconf, automake, libtool, pkg-config," >&2
+        echo "  and -dev packages for: cairo, jpeg, png, uuid, webp, ssl, pango," >&2
+        echo "  libvncserver, freerdp2, libssh2, libtelnet, libwebsockets, pulse, vorbis" >&2
+        exit 1
+    fi
+    say "Installing guacamole build dependencies via $PM (${#PKGS[@]} packages)"
+    echo "  ${PKGS[*]}"
+    # shellcheck disable=SC2086
+    $PM_INSTALL "${PKGS[@]}" || { echo "Package install failed — see errors above." >&2; exit 1; }
+
+    say "Verifying key libraries"
+    for probe in cairo libpng libjpeg zlib; do
+        if pkg-config --exists "$probe" 2>/dev/null; then
+            printf "  %-10s ok\n" "$probe"
+        else
+            printf "  %-10s (pkg-config can't see it — may still be fine)\n" "$probe"
+        fi
+    done
 fi
 
-say "Installing guacamole build dependencies via $PM (${#PKGS[@]} packages)"
-echo "  ${PKGS[*]}"
-# shellcheck disable=SC2086
-$PM_INSTALL "${PKGS[@]}" || { echo "Package install failed — see errors above." >&2; exit 1; }
-
-# --- Summary: verify the key -dev libraries are visible to pkg-config ---------
-say "Verifying key libraries"
-ok=1
-for probe in cairo libpng libjpeg zlib; do
-    if pkg-config --exists "$probe" 2>/dev/null; then
-        printf "  %-10s ok\n" "$probe"
+# --- 2. Fetch + build libguac (our own static libguac.a + protocol plugins) ---
+# We do NOT use a distro libguac: the service links our own build. This target
+# git-clones apache/guacamole-server if missing, then compiles it against the
+# -dev libraries installed above. Idempotent once libguac.a exists.
+if [ "$DO_LIBGUAC" -eq 1 ]; then
+    say "Fetching + building libguac from source (apache/guacamole-server)"
+    if [ -f "$REPO/dependencies/guacamole-server-install/lib/libguac.a" ]; then
+        echo "  already built (dependencies/guacamole-server-install/lib/libguac.a) — skipping."
+        echo "  to rebuild: make -C services/guacamole.service distclean, then re-run."
+    elif make -C "$REPO/services/guacamole.service" guacamole-libguac-build; then
+        echo "  libguac built."
     else
-        printf "  %-10s (pkg-config can't see it — may still be fine)\n" "$probe"
+        echo "  libguac build FAILED — check the errors above (missing -dev package?)." >&2
+        exit 1
     fi
-done
-have gcc && have make && have git && have autoreconf || { echo "  toolchain incomplete"; ok=0; }
+fi
 
+# --- Done --------------------------------------------------------------------
 say "Done"
 echo "Build guacamole with:"
-echo "  make            # fetches guacamole-server, builds libguac + the service"
+echo "  make            # builds libguac (if needed) + the service"
 echo "  ./build-apps.sh # deploy the app/service/command into a Kin build"
-[ "$ok" -eq 1 ] || { echo "(some checks were inconclusive — try 'make' and see if it builds)"; }

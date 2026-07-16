@@ -184,16 +184,25 @@ make
 
 ## Dependencies
 
-Install everything needed to build from source with:
+Get everything ready to build from source with:
 
 ```bash
 make install-build-deps        # or: scripts/install-build-deps.sh
-scripts/install-build-deps.sh --list   # just print the package list
 ```
 
-It installs the toolchain and the `-dev` libraries that `libguac` and the
-protocol plugins (VNC, RDP, SSH, Telnet, Kubernetes) need, across apt / dnf /
-pacman. What it covers:
+The script does two things:
+
+1. **Installs the system `-dev` libraries + toolchain** (apt / dnf / pacman).
+2. **Fetches and builds libguac itself** — we do not use a distro libguac; the
+   service statically links our own `libguac.a`. This git-clones
+   apache/guacamole-server (if missing) and compiles it against the libraries
+   from step 1 (idempotent once `dependencies/.../libguac.a` exists).
+
+Flags: `--no-libguac` (only system packages), `--libguac` (only fetch + build
+libguac), `--list` (print the package set and exit).
+
+The system packages it installs — the `-dev` libraries `libguac` and the protocol
+plugins (VNC, RDP, SSH, Telnet, Kubernetes) need:
 
 - **build tools**: build-essential (gcc, g++, make), git, autoconf, automake,
   libtool, pkg-config
