@@ -20,21 +20,47 @@ save_config() {
     fi
 }
 
-prompt_kin_path() {
-    echo ""
-    echo "Enter the path to your Kin build directory (e.g. /home/user/Projects/kin/build):"
-    echo -n "> "
-    read -r KIN_BUILD_PATH
-    KIN_BUILD_PATH=$(echo "$KIN_BUILD_PATH" | sed 's:/*$::')
-    if [ -z "$KIN_BUILD_PATH" ]; then
-        echo "No path provided. Skipping install."
+# Forget a remembered path so the NEXT run asks again.
+forget_config() {
+    rm -f "$CONFIG_FILE"
+}
+
+# A valid Kin build dir exists AND its source tree sits beside it: the parent
+# (strip a trailing /build) must contain repository/. This is exactly what
+# install_to_kin needs, so we reject a bad path up front instead of half-installing.
+validate_kin_path() {
+    local p="$1"
+    [ -n "$p" ] || return 1
+    if [ ! -d "$p" ]; then
+        echo "  Not a directory: $p" >&2
         return 1
     fi
-    if [ ! -d "$KIN_BUILD_PATH" ]; then
-        echo "Error: Directory does not exist: $KIN_BUILD_PATH"
+    local src="${p%/build}"
+    if [ ! -d "$src/repository" ]; then
+        echo "  '$p' doesn't look like a Kin build directory." >&2
+        echo "  Expected its source tree at '$src/repository' (layout: <kin>/build and <kin>/repository)." >&2
         return 1
     fi
     return 0
+}
+
+# Ask until a valid path is entered, or the user presses Enter to skip.
+prompt_kin_path() {
+    while true; do
+        echo ""
+        echo "Enter the path to your Kin build directory (e.g. /home/user/Projects/kin/build):"
+        echo -n "> "
+        read -r KIN_BUILD_PATH
+        KIN_BUILD_PATH=$(echo "$KIN_BUILD_PATH" | sed 's:/*$::')
+        if [ -z "$KIN_BUILD_PATH" ]; then
+            echo "No path provided. Skipping install to Kin."
+            return 1
+        fi
+        if validate_kin_path "$KIN_BUILD_PATH"; then
+            return 0
+        fi
+        echo "Please try again (or press Enter to skip)."
+    done
 }
 
 install_to_kin() {
@@ -116,12 +142,23 @@ echo ""
 echo "=== Guacamole Build Script ==="
 echo ""
 
+# Only trust a remembered path if it is still valid; otherwise forget it (so this
+# run AND the next one ask again) rather than silently reusing a bad directory.
+if [ -n "$KIN_BUILD_PATH" ]; then
+    if validate_kin_path "$KIN_BUILD_PATH"; then
+        echo "Using Kin build path from config: $KIN_BUILD_PATH"
+    else
+        echo "Saved Kin build path is no longer valid: $KIN_BUILD_PATH"
+        echo "Forgetting it and asking again."
+        forget_config
+        KIN_BUILD_PATH=""
+    fi
+fi
+
 if [ -z "$KIN_BUILD_PATH" ]; then
     if prompt_kin_path; then
         save_config
     fi
-else
-    echo "Using Kin build path from config: $KIN_BUILD_PATH"
 fi
 
 echo ""

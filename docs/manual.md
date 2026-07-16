@@ -184,11 +184,22 @@ make
 
 ## Dependencies
 
-- kin.library (pre-built from Kin source)
-- libcairo2-dev
-- libpng-dev
-- libjpeg-dev
-- libuuid-dev
-- libwebp-dev
-- build-essential (gcc, make)
-- autoconf, automake, libtool (for building libguac)
+Install everything needed to build from source with:
+
+```bash
+make install-build-deps        # or: scripts/install-build-deps.sh
+scripts/install-build-deps.sh --list   # just print the package list
+```
+
+It installs the toolchain and the `-dev` libraries that `libguac` and the
+protocol plugins (VNC, RDP, SSH, Telnet, Kubernetes) need, across apt / dnf /
+pacman. What it covers:
+
+- **build tools**: build-essential (gcc, g++, make), git, autoconf, automake,
+  libtool, pkg-config
+- **libguac core**: cairo, jpeg, png, uuid, webp, ssl
+- **protocol plugins**: libvncserver (VNC), freerdp2 (RDP), pango + libssh2 (SSH),
+  libtelnet (Telnet), libwebsockets (Kubernetes), pulse + vorbis (audio)
+
+Not installed by the script: **kin.library** — that is produced by the Kin build
+and wired in by `build-apps.sh`.

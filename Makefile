@@ -39,6 +39,10 @@ tunnel-test:
 browser-test:
 	./scripts/browser-test-kin.sh
 
+# Install the system libraries needed to BUILD guacamole (libguac + plugins).
+install-build-deps:
+	./scripts/install-build-deps.sh
+
 # Install every test dependency (gcc/make, docker, chromium, node) + puppeteer-core.
 install-deps:
 	./scripts/install-test-deps.sh
@@ -59,4 +63,4 @@ clean:
 	$(MAKE) -C $(SERVICE_DIR) clean
 	$(MAKE) -C $(SERVICE_DIR)/tests clean
 
-.PHONY: all service build-apps deb test test-unit integration tunnel-test browser-test install-deps e2e vnc-up vnc-down clean
+.PHONY: all service build-apps deb test test-unit integration tunnel-test browser-test install-build-deps install-deps e2e vnc-up vnc-down clean
