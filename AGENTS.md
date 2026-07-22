@@ -52,9 +52,9 @@ kin_guacamole_admin (web app)
 | `services/guacamole.service/service.c` | Main daemon — Unix socket, IPC handler, guacamole protocol |
 | `services/guacamole.service/management.c` | Connection/session CRUD, JSON API handlers, `.info` persistence |
 | `services/guacamole.service/management.h` | Data structures: GuacConnection, GuacSession |
-| `kin/main.js` | Window entry — creates kin.classes.Window |
-| `kin/app.js` | Admin UI logic — API calls to guacamole.service |
-| `kin/ui.json` | Declarative tabbed UI (Connections, Sessions, Protocols, Settings) |
+| `repository/Applications/Administration/kin_guacamole_admin/main.js` | Window entry — creates kin.classes.Window |
+| `repository/Applications/Administration/kin_guacamole_admin/app.js` | Admin UI logic — API calls to guacamole.service |
+| `repository/Applications/Administration/kin_guacamole_admin/ui.json` | Declarative tabbed UI (Connections, Sessions, Protocols, Settings) |
 
 ## Kin Integration Points
 

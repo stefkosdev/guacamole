@@ -8,7 +8,6 @@ SOURCES = main.c
 OBJECTS = $(SOURCES:.c=.o)
 
 all: $(TARGET)
-	cp guacamole ../
 
 ../../libraries/kin/kin.library:
 	$(MAKE) -C ../../libraries/kin

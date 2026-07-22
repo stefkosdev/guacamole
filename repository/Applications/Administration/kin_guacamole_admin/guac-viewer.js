@@ -1,14 +1,14 @@
 // Live remote-desktop viewer built on guacamole-common-js.
 //
 // Connects to a stored connection through the Kin WebSocket tunnel
-// (/api/guacamole/tunnel-ws?id=<connection-id>), renders the remote display
+// (ticketed /guacamole/tunnel-ws), renders the remote display
 // (video), plays audio, and forwards keyboard/mouse. One Viewer instance owns
 // one live session; switching sessions creates a fresh Viewer.
 import Guacamole from './guacamole-common.min.js';
 
-function tunnelWsUrl() {
+function tunnelWsUrl(path, ticket) {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return proto + '//' + location.host + '/api/guacamole/tunnel-ws';
+    return proto + '//' + location.host + path + '?ticket=' + encodeURIComponent(ticket);
 }
 
 export class GuacViewer {
@@ -24,13 +24,34 @@ export class GuacViewer {
         this.mouse = null;
         this.display = null;
         this._connected = false;
+        this._generation = 0;
     }
 
-    connect(connectionId) {
+    async connect(connectionId) {
         this.disconnect();
+        const generation = this._generation;
         this.container.replaceChildren();
 
-        const tunnel = new Guacamole.WebSocketTunnel(tunnelWsUrl());
+        this.onStatus('requesting access');
+        let ticket;
+        try {
+            const response = await fetch('/api/guacamole/tunnel-ticket', {
+                method: 'POST', credentials: 'include',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ connectionId })
+            });
+            ticket = await response.json();
+        } catch (e) {
+            this.onStatus('error: could not request tunnel access');
+            return;
+        }
+        if (generation !== this._generation) return;
+        if (!ticket || ticket.response !== 'ok' || !ticket.ticket || !ticket.wsPath) {
+            this.onStatus('error: ' + (ticket && ticket.message ? ticket.message : 'access denied'));
+            return;
+        }
+
+        const tunnel = new Guacamole.WebSocketTunnel(tunnelWsUrl(ticket.wsPath, ticket.ticket));
         const client = new Guacamole.Client(tunnel);
         this.client = client;
 
@@ -115,6 +136,7 @@ export class GuacViewer {
     }
 
     disconnect() {
+        this._generation++;
         if (this._onResize) {
             window.removeEventListener('resize', this._onResize);
             this._onResize = null;

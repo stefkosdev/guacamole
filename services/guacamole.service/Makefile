@@ -10,13 +10,13 @@ GUAC_SRC := $(abspath $(GUAC_SRC_REL))
 
 GUAC_CFLAGS = -I$(GUAC_PREFIX)/include
 GUAC_LDFLAGS = -L$(GUAC_PREFIX)/lib -Wl,-Bstatic -lguac -Wl,-Bdynamic -lcairo -lpng -ljpeg -luuid -lwebp
-GUAC_RPATH = -Wl,-rpath,\$$ORIGIN/../dependencies/guacamole-server-install/lib
+GUAC_RPATH = -Wl,-rpath,\$$ORIGIN/../../guacamole/lib
 
-LDFLAGS = -L../../libraries -l:kin.library -Wl,-rpath,\$$ORIGIN/../libraries $(GUAC_LDFLAGS) $(GUAC_RPATH) -lpthread
+LDFLAGS = -L../../libraries -l:kin.library -Wl,-rpath,\$$ORIGIN/../../libraries $(GUAC_LDFLAGS) $(GUAC_RPATH) -lpthread -lcrypto
 
-OBJS = service.o management.o
+OBJS = service.o management.o tunnel.o
 
-all: guacamole-libguac-build guacamole.service
+all: guacamole.service
 
 # === libguac: main library (static) + protocol plugins (dynamic) ===
 #
@@ -29,11 +29,11 @@ all: guacamole-libguac-build guacamole.service
 # so only .so files remain for runtime loading via guac_client_load_plugin().
 
 guacamole-libguac-build:
-	@if [ ! -d "$(GUAC_SRC)" ]; then \
+	@set -e; if [ ! -d "$(GUAC_SRC)" ]; then \
 		echo "Fetching guacamole-server source..."; \
 		git clone --depth 1 https://github.com/apache/guacamole-server.git $(GUAC_SRC); \
 	fi
-	@if [ ! -f "$(GUAC_PREFIX)/lib/libguac.a" ]; then \
+	@set -e; if [ ! -f "$(GUAC_PREFIX)/lib/libguac.a" ]; then \
 		if [ ! -f "$(GUAC_SRC)/config.status" ]; then \
 			echo "Configuring guacamole-server..."; \
 			cd $(GUAC_SRC) && autoreconf -fi && ./configure \
@@ -57,6 +57,8 @@ guacamole-libguac-build:
 		ls -1 $(GUAC_PREFIX)/lib/libguac* 2>/dev/null || true; \
 	fi
 
+$(OBJS): | guacamole-libguac-build
+
 guacamole.service: $(OBJS)
 	$(CC) $(CFLAGS) $(GUAC_CFLAGS) -o $@ $^ $(LDFLAGS)
 
@@ -65,6 +67,9 @@ service.o: service.c management.h
 
 management.o: management.c management.h
 	$(CC) $(CFLAGS) $(GUAC_CFLAGS) -c $< -o $@
+
+tunnel.o: tunnel.c tunnel.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -f *.o guacamole.service

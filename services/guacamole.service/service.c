@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "../../libraries/kin/kin.library.h"
 #include "management.h"
+#include "tunnel.h"
 
 #include <guacamole/client.h>
 #include <guacamole/error.h>
@@ -31,6 +32,19 @@ static volatile sig_atomic_t g_running = 1;
 static int g_listen_fd = -1;
 static int g_wake_pipe[2] = { -1, -1 };
 static int g_manager_pid;
+
+static int json_string_field(const char* json, const char* field, char* out, size_t cap)
+{
+    if (!json || !field || !out || !cap) return 0;
+    char needle[128]; snprintf(needle,sizeof(needle),"\"%s\"",field);
+    const char* p=strstr(json,needle); if(!p)return 0; p+=strlen(needle);
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p++ != ':') return 0;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p++ != '"') return 0;
+    size_t w=0; while(*p && *p!='"') { char c=*p++; if(c=='\\'&&*p){c=*p++; if(c=='n')c='\n';else if(c=='r')c='\r';else if(c=='t')c='\t';}
+        if(w+1<cap)out[w++]=c; } out[w]=0; return *p=='"';
+}
 
 static void on_signal(int sig)
 {
@@ -102,6 +116,28 @@ static void ipc_handler(const char* event, const char* message, void* user_data,
         return;
     }
 
+    if (strcmp(cmd_buf, "tunnel-ticket") == 0)
+    {
+        char username[256] = "", connection_id[128] = "", ticket[65];
+        long expires = 0;
+        if (!json_string_field(msg_body, "username", username, sizeof(username)) ||
+            (!json_string_field(msg_body, "connectionId", connection_id, sizeof(connection_id)) &&
+             !json_string_field(msg_body, "id", connection_id, sizeof(connection_id))) ||
+            !guac_mgmt_find_connection(connection_id) ||
+            guac_tunnel_ticket_issue(username, connection_id, ticket, sizeof(ticket), &expires) != 0)
+        {
+            if (callback_id > 0) kin_write_response(callback_id, "response",
+                "{\"response\":\"fail\",\"message\":\"Invalid connection\"}");
+            return;
+        }
+        char response[384];
+        snprintf(response, sizeof(response),
+            "{\"response\":\"ok\",\"ticket\":\"%s\",\"wsPath\":\"/guacamole/tunnel-ws\",\"expires\":%ld}",
+            ticket, expires);
+        if (callback_id > 0) kin_write_response(callback_id, "response", response);
+        return;
+    }
+
     size_t out_len = 0;
     const char* result = guac_mgmt_handle(cmd_buf, msg_body, &out_len);
     if (!result)
@@ -118,6 +154,20 @@ typedef struct {
     int client_fd;
     char peer_str[64];
 } GuacClientThreadParams;
+
+static void* connection_thread(void* arg);
+
+static int start_protocol_client(int cfd, const char* peer)
+{
+    GuacClientThreadParams* p = malloc(sizeof(*p));
+    if (!p) return -1;
+    p->client_fd = cfd;
+    snprintf(p->peer_str, sizeof(p->peer_str), "%s", peer ? peer : "client");
+    pthread_t tid;
+    if (pthread_create(&tid, NULL, connection_thread, p) != 0) { free(p); return -1; }
+    pthread_detach(tid);
+    return 0;
+}
 
 /*
  * Per-connection injection of a stored connection's parameters.
@@ -467,6 +517,12 @@ int main(int argc, char* argv[])
     }
     kin_log_info("guacamole", "Listening on %s", sockpath);
 
+    int tunnel_lfd = guac_tunnel_listen(start_protocol_client);
+    if (tunnel_lfd < 0)
+        kin_log_info("guacamole", "Could not listen on 127.0.0.1:19131 for browser tunnels");
+    else
+        kin_log_info("guacamole", "Browser tunnel listening on 127.0.0.1:19131");
+
     /* Wake pipe for clean shutdown */
     if (pipe(g_wake_pipe) != 0)
     {
@@ -484,13 +540,15 @@ int main(int argc, char* argv[])
     /* Main poll loop (like proxy.service) */
     while (g_running)
     {
-        struct pollfd fds[2];
+        struct pollfd fds[3];
         fds[0].fd = lfd;
         fds[0].events = POLLIN;
         fds[1].fd = g_wake_pipe[0];
         fds[1].events = POLLIN;
+        fds[2].fd = tunnel_lfd;
+        fds[2].events = POLLIN;
 
-        int pr = poll(fds, 2, -1);
+        int pr = poll(fds, tunnel_lfd >= 0 ? 3 : 2, -1);
         if (pr < 0)
         {
             if (errno == EINTR) continue;
@@ -510,7 +568,10 @@ int main(int argc, char* argv[])
             break;
 
         if (!(fds[0].revents & POLLIN))
+        {
+            if (tunnel_lfd >= 0 && (fds[2].revents & POLLIN)) guac_tunnel_accept(tunnel_lfd);
             continue;
+        }
 
         struct sockaddr_un client_addr;
         socklen_t addr_len = sizeof(client_addr);
@@ -523,32 +584,22 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        /* Spawn connection thread (detached, like proxy.service) */
-        GuacClientThreadParams* p = malloc(sizeof(GuacClientThreadParams));
-        if (p)
-        {
-            p->client_fd = cfd;
-            snprintf(p->peer_str, sizeof(p->peer_str), "fd:%d", cfd);
-
-            pthread_t tid;
-            if (pthread_create(&tid, NULL, connection_thread, p) != 0)
-            {
-                close(cfd);
-                free(p);
-            }
-            else
-                pthread_detach(tid);
-        }
-        else
+        char peer[64]; snprintf(peer,sizeof(peer),"fd:%d",cfd);
+        if (start_protocol_client(cfd, peer) != 0)
             close(cfd);
+
+        if (tunnel_lfd >= 0 && (fds[2].revents & POLLIN)) guac_tunnel_accept(tunnel_lfd);
     }
 
     /* Cleanup */
     if (g_wake_pipe[0] >= 0) { close(g_wake_pipe[0]); g_wake_pipe[0] = -1; }
     if (g_wake_pipe[1] >= 0) { close(g_wake_pipe[1]); g_wake_pipe[1] = -1; }
     if (g_listen_fd >= 0) close(lfd);
+    if (tunnel_lfd >= 0) close(tunnel_lfd);
     g_listen_fd = -1;
     unlink(sockpath);
+
+    guac_tunnel_cleanup();
 
     guac_mgmt_cleanup();
     kin_cleanup();
