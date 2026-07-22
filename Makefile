@@ -62,5 +62,7 @@ vnc-down:
 clean:
 	$(MAKE) -C $(SERVICE_DIR) clean
 	$(MAKE) -C $(SERVICE_DIR)/tests clean
+	$(MAKE) -C polykernel/modules clean
+	$(MAKE) -C commands/guacamole.cmd clean
 
 .PHONY: all service build-apps deb test test-unit integration tunnel-test browser-test install-build-deps install-deps e2e vnc-up vnc-down clean

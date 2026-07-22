@@ -7,16 +7,21 @@ CC = gcc
 CFLAGS = -Wall -g -pthread -I..
 
 BIN = test_management
+TICKET_BIN = test_tickets
 
 all: run
 
 $(BIN): test_management.c ../management.c ../management.h
 	$(CC) $(CFLAGS) -o $@ test_management.c ../management.c
 
-run: $(BIN)
+$(TICKET_BIN): test_tickets.c ../tunnel.c ../tunnel.h
+	$(CC) $(CFLAGS) -o $@ test_tickets.c ../tunnel.c -lcrypto
+
+run: $(BIN) $(TICKET_BIN)
 	./$(BIN)
+	./$(TICKET_BIN)
 
 clean:
-	rm -f $(BIN)
+	rm -f $(BIN) $(TICKET_BIN)
 
 .PHONY: all run clean
